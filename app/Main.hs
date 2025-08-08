@@ -1,6 +1,7 @@
 module Main where
 
 import Options.Applicative qualified as OA
+import Unpack
 
 newtype AppOptions = AppOptions
   { command :: Command
@@ -41,5 +42,5 @@ main :: IO ()
 main = do
   opts <- parseOpts
   case command opts of
-    Unpack (UnpackOptions notebook) -> print notebook
+    Unpack (UnpackOptions notebook) -> unpack notebook
     Pack (PackOptions directory) -> print directory
