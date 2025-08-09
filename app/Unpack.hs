@@ -1,6 +1,6 @@
 module Unpack where
 
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import System.Directory (createDirectoryIfMissing)
@@ -27,10 +27,20 @@ unpack notebookPath = do
       do
         doc <- readIpynb def notebookContents
         mediaAdjustedDoc <- extractAuthoredMedia outputDirectory "media" doc
-        let filteredDoc = removeCellOutputs mediaAdjustedDoc
-        writeMarkdown def {writerExtensions = pandocExtensions} filteredDoc
+        let processedDoc = removeCellMetadata . removeCellOutputs $ mediaAdjustedDoc
+        writeMarkdown def {writerExtensions = pandocExtensions} processedDoc
   markdown <- handleError result
   TIO.writeFile (outputDirectory </> (takeFileName notebookPath -<.> ".md")) markdown
+
+removeCellMetadata :: Pandoc -> Pandoc
+removeCellMetadata = walk filterCellMetadata
+  where
+    filterCellMetadata divBlock@(Div (identifier, classes, _attrs) blocks) | isCell divBlock = Div (identifier, classes, []) blocks
+    filterCellMetadata block = block
+
+isCell :: Block -> Bool
+isCell (Div (_, classes, _) _) = T.pack "cell" `elem` classes
+isCell _block = False
 
 removeCellOutputs :: Pandoc -> Pandoc
 removeCellOutputs = walk filterCellOutputs
