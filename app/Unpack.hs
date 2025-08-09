@@ -26,23 +26,34 @@ unpack notebookPath = do
     runIO $
       do
         doc <- readIpynb def notebookContents
-        let filteredDoc = walk filterCellOutputs doc
-        processedDoc <- extractMedia outputDirectory "media" filteredDoc
-        writeMarkdown def {writerExtensions = pandocExtensions} processedDoc
+        mediaAdjustedDoc <- extractAuthoredMedia outputDirectory "media" doc
+        let filteredDoc = removeCellOutputs mediaAdjustedDoc
+        writeMarkdown def {writerExtensions = pandocExtensions} filteredDoc
   markdown <- handleError result
   TIO.writeFile (outputDirectory </> (takeFileName notebookPath -<.> ".md")) markdown
 
-filterCellOutputs :: Block -> Block
-filterCellOutputs (Div attr@(_, classes, _) blocks)
-  | T.pack "cell" `elem` classes =
-      Div attr filteredBlocks
+removeCellOutputs :: Pandoc -> Pandoc
+removeCellOutputs = walk filterCellOutputs
   where
-    filteredBlocks = filter (not . isOutputDiv) blocks
-filterCellOutputs block = block
+    filterCellOutputs (Div attr@(_, classes, _) blocks)
+      | T.pack "cell" `elem` classes =
+          Div attr filteredBlocks
+      where
+        filteredBlocks = filter (not . isOutputDiv) blocks
+    filterCellOutputs block = block
 
 isOutputDiv :: Block -> Bool
 isOutputDiv (Div (_, classes, _) _) = T.pack "output" `elem` classes
 isOutputDiv _block = False
+
+-- Collects all output media sources in the document into a list.
+listOutputMediaSrcs :: Pandoc -> [T.Text]
+listOutputMediaSrcs = query divImageSrc
+  where
+    divImageSrc divBlock@(Div _ _) | isOutputDiv divBlock = query imageSrc divBlock
+    divImageSrc _ = []
+    imageSrc (Image _ _ (src, _)) = [src]
+    imageSrc _ = []
 
 -- Adapted from https://github.com/jgm/pandoc/blob/7639e800c5af85e5ded862a6e218d54489d17bfc/src/Text/Pandoc/Class/IO.hs#L236-L245
 --
@@ -50,11 +61,17 @@ isOutputDiv _block = False
 -- which is problematic since the rewritten paths will always be relative to the current directory (of the running nbparts)
 -- instead of the output markdown file. The implementation below allows specifying a prefix; this prefix is prepended to the
 -- output markdown file path, but not to the image sources.
-extractMedia :: (PandocMonad m, MonadIO m) => FilePath -> FilePath -> Pandoc -> m Pandoc
-extractMedia dirPrefix dir doc = do
+extractAuthoredMedia :: (PandocMonad m, MonadIO m) => FilePath -> FilePath -> Pandoc -> m Pandoc
+extractAuthoredMedia dirPrefix dir doc = do
   let outdir = dirPrefix </> dir
   media <- getMediaBag
-  let items = mediaItems media
+
+  -- Filter out output media before writing.
+  -- This runs in quadratic time, but shouldn't be too big of a deal
+  -- unless there are a lot of media.
+  let outputMediaSrcs = map T.unpack $ listOutputMediaSrcs doc
+  let items = filter (\(src, _, _) -> src `notElem` outputMediaSrcs) (mediaItems media)
+
   if null items
     then return doc
     else do
