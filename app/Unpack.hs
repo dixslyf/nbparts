@@ -1,8 +1,13 @@
 module Unpack where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Aeson qualified as Aeson
+import Data.Bifunctor qualified
+import Data.HashMap.Strict qualified as HM
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
+import Data.Text.Lazy qualified as TL
+import Data.Text.Lazy.Encoding as TLE
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, (-<.>), (<.>), (</>))
 import Text.Pandoc (Block (Div), Inline (Image), Pandoc)
@@ -26,11 +31,30 @@ unpack notebookPath = do
     runIO $
       do
         doc <- readIpynb def notebookContents
+        liftIO $ writeCellMetadata (outputDirectory </> "metadata.json") doc
         mediaAdjustedDoc <- extractAuthoredMedia outputDirectory "media" doc
         let processedDoc = removeCellMetadata . removeCellOutputs $ mediaAdjustedDoc
         writeMarkdown def {writerExtensions = pandocExtensions} processedDoc
   markdown <- handleError result
   TIO.writeFile (outputDirectory </> (takeFileName notebookPath -<.> ".md")) markdown
+
+-- TODO: Should check for duplicate cell IDs.
+collectCellMetadata :: Pandoc -> HM.HashMap T.Text [(T.Text, T.Text)]
+collectCellMetadata = query collect
+  where
+    collect divBlock@(Div (identifier, _, attrs) _) | isCell divBlock = HM.singleton identifier attrs
+    collect _ = HM.empty
+
+writeCellMetadata :: FilePath -> Pandoc -> IO ()
+writeCellMetadata path doc = Aeson.encodeFile path metadata
+  where
+    metadata :: HM.HashMap T.Text (HM.HashMap T.Text Aeson.Value)
+    metadata = HM.map (HM.fromList . decodeMeta) $ collectCellMetadata doc
+    decodeMeta = map (Data.Bifunctor.second decodeMetaValue)
+    -- If we fail to decode from JSON, treat it as a string.
+    decodeMetaValue value = case Aeson.eitherDecode $ TLE.encodeUtf8 $ TL.fromStrict value of
+      Left _ -> Aeson.String value
+      Right decoded -> decoded
 
 removeCellMetadata :: Pandoc -> Pandoc
 removeCellMetadata = walk filterCellMetadata
