@@ -5,7 +5,7 @@ import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty qualified as PrettyAeson
 import Data.Bifunctor qualified
 import Data.ByteString.Lazy qualified as BSL
-import Data.HashMap.Strict qualified as HM
+import Data.Map.Strict qualified as MS
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Data.Text.Lazy qualified as TL
@@ -41,17 +41,17 @@ unpack notebookPath = do
   TIO.writeFile (outputDirectory </> (takeFileName notebookPath -<.> ".md")) markdown
 
 -- TODO: Should check for duplicate cell IDs.
-collectCellMetadata :: Pandoc -> HM.HashMap T.Text [(T.Text, T.Text)]
+collectCellMetadata :: Pandoc -> MS.Map T.Text [(T.Text, T.Text)]
 collectCellMetadata = query collect
   where
-    collect divBlock@(Div (identifier, _, attrs) _) | isCell divBlock = HM.singleton identifier attrs
-    collect _ = HM.empty
+    collect divBlock@(Div (identifier, _, attrs) _) | isCell divBlock = MS.singleton identifier attrs
+    collect _ = MS.empty
 
 writeCellMetadata :: FilePath -> Pandoc -> IO ()
 writeCellMetadata fp doc = BSL.writeFile fp $ PrettyAeson.encodePretty metadata
   where
-    metadata :: HM.HashMap T.Text (HM.HashMap T.Text Aeson.Value)
-    metadata = HM.map (HM.fromList . decodeMeta) $ collectCellMetadata doc
+    metadata :: MS.Map T.Text (MS.Map T.Text Aeson.Value)
+    metadata = MS.map (MS.fromList . decodeMeta) $ collectCellMetadata doc
     decodeMeta = map (Data.Bifunctor.second decodeMetaValue)
     -- If we fail to decode from JSON, treat it as a string.
     decodeMetaValue value = case Aeson.eitherDecode $ TLE.encodeUtf8 $ TL.fromStrict value of

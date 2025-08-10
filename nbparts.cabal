@@ -30,7 +30,7 @@ executable nbparts
         optparse-applicative ^>=0.19.0.0,
         pandoc ^>=3.7.0.2,
         pandoc-types ^>=1.23.1,
-        unordered-containers ^>=0.2.20,
+        containers ^>=0.7,
         aeson ^>=2.2.3.0,
         aeson-pretty ^>=0.8.10
     hs-source-dirs: app
