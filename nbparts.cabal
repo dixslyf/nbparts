@@ -32,6 +32,6 @@ executable nbparts
         pandoc-types ^>=1.23.1,
         containers ^>=0.7,
         aeson ^>=2.2.3.0,
-        aeson-pretty ^>=0.8.10
+        yaml ^>=0.11.11.2
     hs-source-dirs: app
     default-language: GHC2021

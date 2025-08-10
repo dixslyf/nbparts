@@ -4,14 +4,13 @@ module Unpack where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson qualified as Aeson
-import Data.Aeson.Encode.Pretty qualified as PrettyAeson
 import Data.Bifunctor qualified
-import Data.ByteString.Lazy qualified as BSL
 import Data.Map.Strict qualified as MS
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Encoding as TLE
+import Data.Yaml qualified as Yaml
 import GHC.Generics (Generic)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, (-<.>), (<.>), (</>))
@@ -51,7 +50,7 @@ unpack notebookPath = do
     runIO $
       do
         doc <- readIpynb def notebookContents
-        liftIO $ writeMetadata (outputDirectory </> "metadata.json") doc
+        liftIO $ writeMetadata (outputDirectory </> "metadata.yaml") doc
         mediaAdjustedDoc <- extractAuthoredMedia outputDirectory "media" doc
         let processedDoc = removeCellMetadata . removeCellOutputs $ mediaAdjustedDoc
         writeMarkdown def {writerExtensions = pandocExtensions} processedDoc
@@ -93,7 +92,7 @@ collectMetadata :: Pandoc -> Metadata
 collectMetadata doc = Metadata {notebook = collectNotebookMetadata doc, cells = collectCellsMetadata doc}
 
 writeMetadata :: FilePath -> Pandoc -> IO ()
-writeMetadata fp doc = (BSL.writeFile fp . PrettyAeson.encodePretty) $ collectMetadata doc
+writeMetadata fp doc = Yaml.encodeFile fp $ collectMetadata doc
 
 removeCellMetadata :: Pandoc -> Pandoc
 removeCellMetadata = walk filterCellMetadata
