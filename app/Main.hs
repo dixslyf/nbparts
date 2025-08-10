@@ -72,4 +72,5 @@ renderError err = case err of
       <> T.show minor
       <> ". Notebook format must be at least version 4.5."
   UnpackError (UnpackJSONDecodeError message) -> "Failed to parse notebook: " <> message
+  UnpackError UnpackMissingCellIdError -> "Notebook contains cells without an identifier"
   UnpackError (UnpackPandocError pandocErr) -> Pandoc.renderError pandocErr

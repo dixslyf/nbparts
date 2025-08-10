@@ -2,12 +2,11 @@
 
 module Unpack where
 
-import Control.Monad.Except (runExceptT, throwError)
+import Control.Monad.Except (ExceptT (ExceptT), runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson qualified as Aeson
 import Data.Ipynb qualified as Ipynb
 import Data.Map.Strict qualified as MS
-import Data.Maybe qualified as Maybe
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
@@ -27,7 +26,11 @@ import Text.Pandoc.Writers.Markdown (writeMarkdown)
 minimumNotebookFormat :: (Int, Int)
 minimumNotebookFormat = (4, 5)
 
-data UnpackError = UnpackUnsupportedNotebookFormat (Int, Int) | UnpackJSONDecodeError T.Text | UnpackPandocError PandocError
+data UnpackError
+  = UnpackUnsupportedNotebookFormat (Int, Int)
+  | UnpackJSONDecodeError T.Text
+  | UnpackMissingCellIdError
+  | UnpackPandocError PandocError
 
 data Metadata = Metadata
   { notebook :: Ipynb.JSONMeta,
@@ -58,7 +61,8 @@ unpack notebookPath = runExceptT $ do
     Left message -> throwError $ UnpackJSONDecodeError (T.pack message)
 
   -- Export metadata.
-  liftIO $ writeMetadata (outputDirectory </> "metadata.yaml") notebook
+  metadata <- ExceptT $ pure (collectMetadata notebook)
+  liftIO $ writeMetadata (outputDirectory </> "metadata.yaml") metadata
 
   -- Convert to markdown and export authored attachments.
   convertResult <-
@@ -76,16 +80,22 @@ unpack notebookPath = runExceptT $ do
 
   liftIO $ TIO.writeFile (outputDirectory </> (takeFileName notebookPath -<.> ".md")) markdownText
 
-collectMetadata :: Ipynb.Notebook a -> Metadata
-collectMetadata (Ipynb.Notebook nbmeta _format cells) = Metadata {notebook = nbmeta, cells = cellsMeta}
+-- Even though we should already have checked that the notebook format version is at least 4.5
+-- (for which cell identifiers are mandatory), we should not assume that all cells will have an identifier
+-- as the notebook could be malformed.
+collectMetadata :: Ipynb.Notebook a -> Either UnpackError Metadata
+collectMetadata (Ipynb.Notebook nbmeta _format cells) = do
+  cellsMetaList <- traverse extractCellId cells
+  let cellsMeta = MS.fromList cellsMetaList
+  return Metadata {notebook = nbmeta, cells = cellsMeta}
   where
-    cellsMeta = MS.fromList cellsMetaList
-    -- NOTE: We should already have checked that the notebook format version is at least 4.5, so identifiers
-    -- are guaranteed to exist.
-    cellsMetaList = map (\(Ipynb.Cell _ identifier _ meta _) -> (Maybe.fromJust identifier, meta)) cells
+    extractCellId :: Ipynb.Cell a -> Either UnpackError (T.Text, Ipynb.JSONMeta)
+    extractCellId (Ipynb.Cell _ maybeId _ meta _) = case maybeId of
+      Just cellId -> Right (cellId, meta)
+      Nothing -> Left UnpackMissingCellIdError
 
-writeMetadata :: FilePath -> Ipynb.Notebook a -> IO ()
-writeMetadata fp doc = Yaml.encodeFile fp $ collectMetadata doc
+writeMetadata :: FilePath -> Metadata -> IO ()
+writeMetadata = Yaml.encodeFile
 
 removeCellMetadata :: Pandoc -> Pandoc
 removeCellMetadata = walk filterCellMetadata
