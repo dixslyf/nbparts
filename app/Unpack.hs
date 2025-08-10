@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 module Unpack where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -10,9 +12,10 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Encoding as TLE
+import GHC.Generics (Generic)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, (-<.>), (<.>), (</>))
-import Text.Pandoc (Block (Div), Inline (Image), Pandoc)
+import Text.Pandoc (Block (Div), Inline (Image), Meta (Meta), MetaValue (..), Pandoc (Pandoc))
 import Text.Pandoc.Class (PandocMonad, getMediaBag, runIO)
 import Text.Pandoc.Class.IO (writeMedia)
 import Text.Pandoc.Error (handleError)
@@ -21,6 +24,21 @@ import Text.Pandoc.Options (WriterOptions (writerExtensions), def, pandocExtensi
 import Text.Pandoc.Readers.Ipynb
 import Text.Pandoc.Walk
 import Text.Pandoc.Writers.Markdown (writeMarkdown)
+
+type NotebookMetadata = MS.Map T.Text Aeson.Value
+
+-- Map of Cell IDs to key-value attribute pairs.
+type CellsMetadata = MS.Map T.Text (MS.Map T.Text Aeson.Value)
+
+data Metadata = Metadata
+  { notebook :: NotebookMetadata,
+    cells :: CellsMetadata
+  }
+  deriving (Generic, Show)
+
+instance Aeson.ToJSON Metadata
+
+instance Aeson.FromJSON Metadata
 
 unpack :: FilePath -> IO ()
 unpack notebookPath = do
@@ -33,35 +51,49 @@ unpack notebookPath = do
     runIO $
       do
         doc <- readIpynb def notebookContents
-        liftIO $ writeCellMetadata (outputDirectory </> "metadata.json") doc
+        liftIO $ writeMetadata (outputDirectory </> "metadata.json") doc
         mediaAdjustedDoc <- extractAuthoredMedia outputDirectory "media" doc
         let processedDoc = removeCellMetadata . removeCellOutputs $ mediaAdjustedDoc
         writeMarkdown def {writerExtensions = pandocExtensions} processedDoc
   markdown <- handleError result
   TIO.writeFile (outputDirectory </> (takeFileName notebookPath -<.> ".md")) markdown
 
+collectNotebookMetadata :: Pandoc -> NotebookMetadata
+collectNotebookMetadata (Pandoc (Meta unMeta) _) = MS.map serialize unMeta
+  where
+    -- Serializing `MetaValue`'s directly to JSON yields a different format from what we want,
+    -- so we manually serialize the inner values. See `MetaValue`'s `ToJson` implementation for more details.
+    serialize :: MetaValue -> Aeson.Value
+    serialize (MetaMap metamap) = Aeson.toJSON (MS.map serialize metamap)
+    serialize (MetaList metalist) = Aeson.toJSON (map serialize metalist)
+    serialize (MetaBool bool) = Aeson.toJSON bool
+    serialize (MetaString text) = Aeson.toJSON text
+    -- Jupyter notebooks shouldn't have metadata containing inlines and blocks.
+    serialize (MetaInlines _inlines) = error "Unexpected `MetaInlines` when collecting notebook metadata"
+    serialize (MetaBlocks _blocks) = error "Unexpected `MetaBlocks` when collecting notebook metadata"
+
 -- TODO: Should check for duplicate cell IDs.
-collectCellMetadata :: Pandoc -> MS.Map T.Text [(T.Text, T.Text)]
-collectCellMetadata = query collect
+collectCellsMetadata :: Pandoc -> CellsMetadata
+collectCellsMetadata = query collect
   where
     collect divBlock@(Div (identifier, _, attrs) _)
       | isCell divBlock =
           if null attrs
             then
               MS.empty
-            else MS.singleton identifier attrs
+            else MS.singleton identifier $ MS.fromList (decodeMeta attrs)
     collect _ = MS.empty
-
-writeCellMetadata :: FilePath -> Pandoc -> IO ()
-writeCellMetadata fp doc = BSL.writeFile fp $ PrettyAeson.encodePretty metadata
-  where
-    metadata :: MS.Map T.Text (MS.Map T.Text Aeson.Value)
-    metadata = MS.map (MS.fromList . decodeMeta) $ collectCellMetadata doc
     decodeMeta = map (Data.Bifunctor.second decodeMetaValue)
     -- If we fail to decode from JSON, treat it as a string.
     decodeMetaValue value = case Aeson.eitherDecode $ TLE.encodeUtf8 $ TL.fromStrict value of
       Left _ -> Aeson.String value
       Right decoded -> decoded
+
+collectMetadata :: Pandoc -> Metadata
+collectMetadata doc = Metadata {notebook = collectNotebookMetadata doc, cells = collectCellsMetadata doc}
+
+writeMetadata :: FilePath -> Pandoc -> IO ()
+writeMetadata fp doc = (BSL.writeFile fp . PrettyAeson.encodePretty) $ collectMetadata doc
 
 removeCellMetadata :: Pandoc -> Pandoc
 removeCellMetadata = walk filterCellMetadata
