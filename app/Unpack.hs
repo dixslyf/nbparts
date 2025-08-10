@@ -2,36 +2,36 @@
 
 module Unpack where
 
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Except (runExceptT, throwError)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson qualified as Aeson
-import Data.Bifunctor qualified
+import Data.Ipynb qualified as Ipynb
 import Data.Map.Strict qualified as MS
+import Data.Maybe qualified as Maybe
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Data.Text.Lazy qualified as TL
-import Data.Text.Lazy.Encoding as TLE
 import Data.Yaml qualified as Yaml
 import GHC.Generics (Generic)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeFileName, (-<.>), (<.>), (</>))
-import Text.Pandoc (Block (Div), Inline (Image), Meta (Meta), MetaValue (..), Pandoc (Pandoc))
+import Text.Pandoc (Block (Div), Inline (Image), Pandoc, PandocError)
 import Text.Pandoc.Class (PandocMonad, getMediaBag, runIO)
 import Text.Pandoc.Class.IO (writeMedia)
-import Text.Pandoc.Error (handleError)
 import Text.Pandoc.MediaBag (MediaBag, MediaItem (MediaItem), lookupMedia, mediaItems)
 import Text.Pandoc.Options (WriterOptions (writerExtensions), def, pandocExtensions)
 import Text.Pandoc.Readers.Ipynb
 import Text.Pandoc.Walk
 import Text.Pandoc.Writers.Markdown (writeMarkdown)
 
-type NotebookMetadata = MS.Map T.Text Aeson.Value
+minimumNotebookFormat :: (Int, Int)
+minimumNotebookFormat = (4, 5)
 
--- Map of Cell IDs to key-value attribute pairs.
-type CellsMetadata = MS.Map T.Text (MS.Map T.Text Aeson.Value)
+data UnpackError = UnpackUnsupportedNotebookFormat (Int, Int) | UnpackJSONDecodeError T.Text | UnpackPandocError PandocError
 
 data Metadata = Metadata
-  { notebook :: NotebookMetadata,
-    cells :: CellsMetadata
+  { notebook :: Ipynb.JSONMeta,
+    cells :: MS.Map T.Text Ipynb.JSONMeta -- Map of Cell IDs to key-value attribute pairs.
   }
   deriving (Generic, Show)
 
@@ -39,59 +39,52 @@ instance Aeson.ToJSON Metadata
 
 instance Aeson.FromJSON Metadata
 
-unpack :: FilePath -> IO ()
-unpack notebookPath = do
-  notebookContents <- TIO.readFile notebookPath
+-- NOTE: Currently, we parse the notebook twice: once by Pandoc's `readIpynb`
+-- and once more using `Aeson.eitherDecodeStrict`. I don't think there is a way
+-- to avoid this since Pandoc does not expose an API to create a document directly
+-- from an `Ipynb.Notebook`. We also cannot use the Pandoc document's metadata since
+-- we lose type information about numbers and null (i.e., lossy).
+unpack :: FilePath -> IO (Either UnpackError ())
+unpack notebookPath = runExceptT $ do
+  notebookContents <- liftIO $ TIO.readFile notebookPath
 
   let outputDirectory = notebookPath <.> "nbparts"
-  createDirectoryIfMissing True outputDirectory
+  liftIO $ createDirectoryIfMissing True outputDirectory
 
-  result <-
-    runIO $
-      do
-        doc <- readIpynb def notebookContents
-        liftIO $ writeMetadata (outputDirectory </> "metadata.yaml") doc
-        mediaAdjustedDoc <- extractAuthoredMedia outputDirectory "media" doc
-        let processedDoc = removeCellMetadata . removeCellOutputs $ mediaAdjustedDoc
-        writeMarkdown def {writerExtensions = pandocExtensions} processedDoc
-  markdown <- handleError result
-  TIO.writeFile (outputDirectory </> (takeFileName notebookPath -<.> ".md")) markdown
+  -- Parse the notebook.
+  notebook <- case Aeson.eitherDecodeStrict $ TE.encodeUtf8 notebookContents of
+    Right (nb@(Ipynb.Notebook _ format _) :: Ipynb.Notebook Ipynb.NbV4) | format >= minimumNotebookFormat -> pure nb
+    Right ((Ipynb.Notebook _ format _)) -> throwError $ UnpackUnsupportedNotebookFormat format
+    Left message -> throwError $ UnpackJSONDecodeError (T.pack message)
 
-collectNotebookMetadata :: Pandoc -> NotebookMetadata
-collectNotebookMetadata (Pandoc (Meta unMeta) _) = MS.map serialize unMeta
+  -- Export metadata.
+  liftIO $ writeMetadata (outputDirectory </> "metadata.yaml") notebook
+
+  -- Convert to markdown and export authored attachments.
+  convertResult <-
+    liftIO $
+      runIO $
+        do
+          doc <- readIpynb def notebookContents
+          mediaAdjustedDoc <- extractAuthoredMedia outputDirectory "media" doc
+          let processedDoc = removeCellMetadata . removeCellOutputs $ mediaAdjustedDoc
+          writeMarkdown def {writerExtensions = pandocExtensions} processedDoc
+
+  markdownText <- case convertResult of
+    Right markdown -> pure markdown
+    Left err -> throwError $ UnpackPandocError err
+
+  liftIO $ TIO.writeFile (outputDirectory </> (takeFileName notebookPath -<.> ".md")) markdownText
+
+collectMetadata :: Ipynb.Notebook a -> Metadata
+collectMetadata (Ipynb.Notebook nbmeta _format cells) = Metadata {notebook = nbmeta, cells = cellsMeta}
   where
-    -- Serializing `MetaValue`'s directly to JSON yields a different format from what we want,
-    -- so we manually serialize the inner values. See `MetaValue`'s `ToJson` implementation for more details.
-    serialize :: MetaValue -> Aeson.Value
-    serialize (MetaMap metamap) = Aeson.toJSON (MS.map serialize metamap)
-    serialize (MetaList metalist) = Aeson.toJSON (map serialize metalist)
-    serialize (MetaBool bool) = Aeson.toJSON bool
-    serialize (MetaString text) = Aeson.toJSON text
-    -- Jupyter notebooks shouldn't have metadata containing inlines and blocks.
-    serialize (MetaInlines _inlines) = error "Unexpected `MetaInlines` when collecting notebook metadata"
-    serialize (MetaBlocks _blocks) = error "Unexpected `MetaBlocks` when collecting notebook metadata"
+    cellsMeta = MS.fromList cellsMetaList
+    -- NOTE: We should already have checked that the notebook format version is at least 4.5, so identifiers
+    -- are guaranteed to exist.
+    cellsMetaList = map (\(Ipynb.Cell _ identifier _ meta _) -> (Maybe.fromJust identifier, meta)) cells
 
--- TODO: Should check for duplicate cell IDs.
-collectCellsMetadata :: Pandoc -> CellsMetadata
-collectCellsMetadata = query collect
-  where
-    collect divBlock@(Div (identifier, _, attrs) _)
-      | isCell divBlock =
-          if null attrs
-            then
-              MS.empty
-            else MS.singleton identifier $ MS.fromList (decodeMeta attrs)
-    collect _ = MS.empty
-    decodeMeta = map (Data.Bifunctor.second decodeMetaValue)
-    -- If we fail to decode from JSON, treat it as a string.
-    decodeMetaValue value = case Aeson.eitherDecode $ TLE.encodeUtf8 $ TL.fromStrict value of
-      Left _ -> Aeson.String value
-      Right decoded -> decoded
-
-collectMetadata :: Pandoc -> Metadata
-collectMetadata doc = Metadata {notebook = collectNotebookMetadata doc, cells = collectCellsMetadata doc}
-
-writeMetadata :: FilePath -> Pandoc -> IO ()
+writeMetadata :: FilePath -> Ipynb.Notebook a -> IO ()
 writeMetadata fp doc = Yaml.encodeFile fp $ collectMetadata doc
 
 removeCellMetadata :: Pandoc -> Pandoc
