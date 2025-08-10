@@ -2,7 +2,9 @@ module Unpack where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson qualified as Aeson
+import Data.Aeson.Encode.Pretty qualified as PrettyAeson
 import Data.Bifunctor qualified
+import Data.ByteString.Lazy qualified as BSL
 import Data.HashMap.Strict qualified as HM
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
@@ -46,7 +48,7 @@ collectCellMetadata = query collect
     collect _ = HM.empty
 
 writeCellMetadata :: FilePath -> Pandoc -> IO ()
-writeCellMetadata path doc = Aeson.encodeFile path metadata
+writeCellMetadata fp doc = BSL.writeFile fp $ PrettyAeson.encodePretty metadata
   where
     metadata :: HM.HashMap T.Text (HM.HashMap T.Text Aeson.Value)
     metadata = HM.map (HM.fromList . decodeMeta) $ collectCellMetadata doc

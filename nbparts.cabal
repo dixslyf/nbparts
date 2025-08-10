@@ -26,10 +26,12 @@ executable nbparts
         base ^>=4.19.2.0,
         filepath ^>=1.4.301.0,
         text ^>=2.1.1,
+        bytestring ^>=0.12.1.0,
         optparse-applicative ^>=0.19.0.0,
         pandoc ^>=3.7.0.2,
         pandoc-types ^>=1.23.1,
         unordered-containers ^>=0.2.20,
-        aeson ^>=2.2.3.0
+        aeson ^>=2.2.3.0,
+        aeson-pretty ^>=0.8.10
     hs-source-dirs: app
     default-language: GHC2021
