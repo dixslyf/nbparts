@@ -44,7 +44,12 @@ unpack notebookPath = do
 collectCellMetadata :: Pandoc -> MS.Map T.Text [(T.Text, T.Text)]
 collectCellMetadata = query collect
   where
-    collect divBlock@(Div (identifier, _, attrs) _) | isCell divBlock = MS.singleton identifier attrs
+    collect divBlock@(Div (identifier, _, attrs) _)
+      | isCell divBlock =
+          if null attrs
+            then
+              MS.empty
+            else MS.singleton identifier attrs
     collect _ = MS.empty
 
 writeCellMetadata :: FilePath -> Pandoc -> IO ()
