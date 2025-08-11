@@ -65,12 +65,11 @@ exitError err = do
 
 renderError :: NbpartsError -> T.Text
 renderError err = case err of
-  UnpackError (UnpackUnsupportedNotebookFormat (major, minor)) ->
-    "Unsupported notebook format: "
-      <> T.show major
-      <> "."
-      <> T.show minor
-      <> ". Notebook format must be at least version 4.5."
   UnpackError (UnpackJSONDecodeError message) -> "Failed to parse notebook: " <> message
-  UnpackError UnpackMissingCellIdError -> "Notebook contains cells without an identifier"
+  UnpackError UnpackMissingCellIdError ->
+    "Notebook contains cell(s) without an identifier. Try upgrading your notebook to at least version "
+      <> T.show (fst recommendedNotebookFormat)
+      <> "."
+      <> T.show (snd recommendedNotebookFormat)
+      <> "."
   UnpackError (UnpackPandocError pandocErr) -> Pandoc.renderError pandocErr

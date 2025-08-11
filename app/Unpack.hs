@@ -23,12 +23,11 @@ import Text.Pandoc.Readers.Ipynb
 import Text.Pandoc.Walk
 import Text.Pandoc.Writers.Markdown (writeMarkdown)
 
-minimumNotebookFormat :: (Int, Int)
-minimumNotebookFormat = (4, 5)
+recommendedNotebookFormat :: (Int, Int)
+recommendedNotebookFormat = (4, 5)
 
 data UnpackError
-  = UnpackUnsupportedNotebookFormat (Int, Int)
-  | UnpackJSONDecodeError T.Text
+  = UnpackJSONDecodeError T.Text
   | UnpackMissingCellIdError
   | UnpackPandocError PandocError
 
@@ -54,14 +53,13 @@ unpack notebookPath = runExceptT $ do
   let outputDirectory = notebookPath <.> "nbparts"
   liftIO $ createDirectoryIfMissing True outputDirectory
 
-  -- Parse the notebook.
-  notebook <- case Aeson.eitherDecodeStrict $ TE.encodeUtf8 notebookContents of
-    Right (nb@(Ipynb.Notebook _ format _) :: Ipynb.Notebook Ipynb.NbV4) | format >= minimumNotebookFormat -> pure nb
-    Right ((Ipynb.Notebook _ format _)) -> throwError $ UnpackUnsupportedNotebookFormat format
-    Left message -> throwError $ UnpackJSONDecodeError (T.pack message)
-
-  -- Export metadata.
-  metadata <- ExceptT $ pure (collectMetadata notebook)
+  -- Extract and export metadata.
+  let notebookBytes = TE.encodeUtf8 notebookContents
+  metadata <- ExceptT $ pure $ case Aeson.eitherDecodeStrict notebookBytes of
+    Right (nb :: Ipynb.Notebook Ipynb.NbV4) -> collectMetadata nb
+    Left _ -> case Aeson.eitherDecodeStrict notebookBytes of
+      Right (nb :: Ipynb.Notebook Ipynb.NbV3) -> collectMetadata nb
+      Left message -> throwError $ UnpackJSONDecodeError (T.pack message)
   liftIO $ writeMetadata (outputDirectory </> "metadata.yaml") metadata
 
   -- Convert to markdown and export authored attachments.
