@@ -34,6 +34,7 @@ executable nbparts
         ipynb ^>=0.2,
         containers ^>=0.7,
         aeson ^>=2.2.3.0,
-        yaml ^>=0.11.11.2
+        yaml ^>=0.11.11.2,
+        crypton ^>=1.0.4
     hs-source-dirs: app
     default-language: GHC2021
