@@ -1,6 +1,9 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Nbparts.Unpack.Outputs where
 
 import Crypto.Hash qualified as Hash
+import Data.Aeson (Options (..), SumEncoding (..))
 import Data.Aeson qualified as Aeson
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
@@ -12,9 +15,9 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import GHC.Generics (Generic)
 import Nbparts.Unpack.Error (UnpackError)
+import Nbparts.Unpack.Error qualified as Nbparts
 import System.FilePath ((</>))
 import Text.Pandoc.MIME qualified as Pandoc.MIME
-import qualified Nbparts.Unpack.Error as Nbparts
 
 type Outputs a = Map Text [Ipynb.Output a] -- Map of Cell IDs to outputs.
 
@@ -23,9 +26,11 @@ type UnembeddedOutputs = Map Text [UnembeddedOutput]
 data UnembeddedMimeData = BinaryData FilePath | TextualData Text | JsonData Aeson.Value
   deriving (Generic, Show)
 
-instance Aeson.ToJSON UnembeddedMimeData
+instance Aeson.ToJSON UnembeddedMimeData where
+  toJSON = Aeson.genericToJSON jsonOptions
 
-instance Aeson.FromJSON UnembeddedMimeData
+instance Aeson.FromJSON UnembeddedMimeData where
+  parseJSON = Aeson.genericParseJSON jsonOptions
 
 type UnembeddedMimeBundle = Map Text UnembeddedMimeData
 
@@ -50,9 +55,30 @@ data UnembeddedOutput
       }
   deriving (Generic, Show)
 
-instance Aeson.ToJSON UnembeddedOutput
+instance Aeson.ToJSON UnembeddedOutput where
+  toJSON = Aeson.genericToJSON jsonOptions
 
-instance Aeson.FromJSON UnembeddedOutput
+instance Aeson.FromJSON UnembeddedOutput where
+  parseJSON = Aeson.genericParseJSON jsonOptions
+
+jsonOptions :: Aeson.Options
+jsonOptions =
+  Aeson.defaultOptions
+    { sumEncoding =
+        Aeson.TaggedObject
+          { tagFieldName = "type",
+            contentsFieldName = "value"
+          },
+      constructorTagModifier = \case
+        "BinaryData" -> "binary"
+        "TextualData" -> "text"
+        "JsonData" -> "json"
+        "Stream" -> "stream"
+        "DisplayData" -> "display-data"
+        "ExecuteResult" -> "execute-result"
+        "Err" -> "error"
+        other -> other
+    }
 
 collectOutputs :: Ipynb.Notebook a -> Either UnpackError (Outputs a)
 collectOutputs (Ipynb.Notebook _meta _format cells) = Map.fromList <$> sequence (Maybe.mapMaybe toEntry cells)
