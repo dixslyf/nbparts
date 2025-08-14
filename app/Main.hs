@@ -1,6 +1,15 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Main where
 
+import Data.Text qualified as T
+import Data.Text.IO qualified as TIO
+import Nbparts.Unpack qualified as Nbparts
+import Nbparts.Unpack.Error qualified as Nbparts
 import Options.Applicative qualified as OA
+import System.Exit (ExitCode (ExitFailure), exitWith)
+import System.IO (stderr)
+import Text.Pandoc qualified as Pandoc
 
 newtype AppOptions = AppOptions
   { command :: Command
@@ -37,9 +46,31 @@ parseOpts = OA.customExecParser prefs opts
     prefs = OA.prefs OA.showHelpOnEmpty
     opts = OA.info (OA.helper <*> appOptionsParser) (OA.fullDesc <> OA.progDesc "Unpack a Jupyter notebook into its content, metadata and outputs")
 
+newtype NbpartsError = UnpackError Nbparts.UnpackError
+
 main :: IO ()
 main = do
   opts <- parseOpts
   case command opts of
-    Unpack (UnpackOptions notebook) -> print notebook
+    Unpack (UnpackOptions notebook) -> do
+      result <- Nbparts.unpack notebook
+      case result of
+        Right _ -> pure ()
+        Left err -> exitError $ UnpackError err
     Pack (PackOptions directory) -> print directory
+
+exitError :: NbpartsError -> IO a
+exitError err = do
+  TIO.hPutStrLn stderr $ renderError err
+  exitWith $ ExitFailure 1
+
+renderError :: NbpartsError -> T.Text
+renderError err = case err of
+  UnpackError (Nbparts.UnpackJSONDecodeError message) -> "Failed to parse notebook: " <> message
+  UnpackError Nbparts.UnpackMissingCellIdError ->
+    "Notebook contains cell(s) without an identifier. Try upgrading your notebook to at least version "
+      <> T.show (fst Nbparts.recommendedNotebookFormat)
+      <> "."
+      <> T.show (snd Nbparts.recommendedNotebookFormat)
+      <> "."
+  UnpackError (Nbparts.UnpackPandocError pandocErr) -> Pandoc.renderError pandocErr
