@@ -19,7 +19,11 @@ executable nbparts
     import: warnings
     main-is: Main.hs
     other-modules:
-        Unpack
+        Nbparts.Unpack,
+        Nbparts.Unpack.Sources,
+        Nbparts.Unpack.Outputs,
+        Nbparts.Unpack.Metadata,
+        Nbparts.Unpack.Error
     -- other-extensions:
     build-depends:
         directory ^>=1.3.8.5,
