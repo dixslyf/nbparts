@@ -3,6 +3,7 @@
 module Main where
 
 import Control.Arrow (left)
+import Control.Exception qualified as Exception
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Nbparts.Pack qualified as Nbparts
@@ -82,4 +83,8 @@ renderError err = case err of
       <> T.show (snd Nbparts.recommendedNotebookFormat)
       <> "."
   UnpackError (Nbparts.UnpackPandocError pandocErr) -> Pandoc.renderError pandocErr
+  PackError (Nbparts.PackParseIpynbError message) -> "Failed to parse notebook: " <> message
+  PackError (Nbparts.PackParseMetadataError parseErr) -> "Failed to parse metadata: " <> T.pack (Exception.displayException parseErr)
   PackError (Nbparts.PackPandocError pandocErr) -> Pandoc.renderError pandocErr
+  PackError Nbparts.PackMissingCellIdError -> "Markdown content contains missing cell ID"
+  PackError (Nbparts.PackMissingCellMetadataError cellId) -> "Could not find metadata for cell ID: " <> cellId
