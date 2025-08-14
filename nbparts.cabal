@@ -39,6 +39,7 @@ executable nbparts
         containers ^>=0.7,
         aeson ^>=2.2.3.0,
         yaml ^>=0.11.11.2,
+        libyaml ^>=0.1.4,
         crypton ^>=1.0.4
     hs-source-dirs: app
     default-language: GHC2021

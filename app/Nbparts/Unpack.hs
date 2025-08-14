@@ -20,6 +20,7 @@ import Nbparts.Unpack.Sources qualified as Nbparts
 import System.Directory qualified as Directory
 import System.FilePath ((-<.>), (<.>), (</>))
 import System.FilePath qualified as FilePath
+import Text.Libyaml qualified as Libyaml
 import Text.Pandoc (WriterOptions (..), def, pandocExtensions)
 import Text.Pandoc qualified as Pandoc
 
@@ -58,7 +59,8 @@ unpack notebookPath = runExceptT $ do
   let metadataPath = exportDirectory </> "metadata.yaml"
   liftIO $ Yaml.encodeFile metadataPath metadata
   let outputsPath = exportDirectory </> "outputs.yaml"
-  liftIO $ Yaml.encodeFile outputsPath outputs
+  let outputsYamlOptions = Yaml.setStringStyle outputsYamlStringStyle Yaml.defaultEncodeOptions
+  liftIO $ Yaml.encodeFileWith outputsYamlOptions outputsPath outputs
 
   -- Convert to markdown, extract outputs and export authored attachments.
   convertResult <-
@@ -86,3 +88,17 @@ decodeNotebookWith onSuccess onError bytes =
       case Aeson.eitherDecodeStrict bytes of
         Right (nb :: Ipynb.Notebook Ipynb.NbV3) -> onSuccess nb
         Left message -> onError (Nbparts.UnpackJSONDecodeError (T.pack message))
+
+hasOnlyOneNewline :: T.Text -> Bool
+hasOnlyOneNewline text = T.length (T.filter (== '\n') text) == 1
+
+hasNewlineSuffix :: T.Text -> Bool
+hasNewlineSuffix = T.isSuffixOf "\n"
+
+-- Based on Yaml's default string style.
+outputsYamlStringStyle :: T.Text -> (Libyaml.Tag, Libyaml.Style)
+outputsYamlStringStyle s
+  | hasOnlyOneNewline s && hasNewlineSuffix s = (Libyaml.NoTag, Libyaml.DoubleQuoted)
+  | "\n" `T.isInfixOf` s = (Libyaml.NoTag, Libyaml.Literal)
+  | Yaml.isSpecialString s = (Libyaml.NoTag, Libyaml.SingleQuoted)
+  | otherwise = (Libyaml.NoTag, Libyaml.PlainNoTag)
