@@ -2,8 +2,11 @@
 
 module Main where
 
+import Control.Arrow (left)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
+import Nbparts.Pack qualified as Nbparts
+import Nbparts.Pack.Error qualified as Nbparts
 import Nbparts.Unpack qualified as Nbparts
 import Nbparts.Unpack.Error qualified as Nbparts
 import Options.Applicative qualified as OA
@@ -19,8 +22,9 @@ newtype UnpackOptions = UnpackOptions
   { notebook :: FilePath
   }
 
-newtype PackOptions = PackOptions
-  { directory :: FilePath
+data PackOptions = PackOptions
+  { directory :: FilePath,
+    outputPath :: Maybe FilePath
   }
 
 data Command = Unpack UnpackOptions | Pack PackOptions
@@ -29,7 +33,10 @@ unpackOptionsParser :: OA.Parser UnpackOptions
 unpackOptionsParser = UnpackOptions <$> OA.argument OA.str (OA.metavar "NOTEBOOK" <> OA.help "Path to the notebook to unpack")
 
 packOptionsParser :: OA.Parser PackOptions
-packOptionsParser = PackOptions <$> OA.argument OA.str (OA.metavar "DIRECTORY" <> OA.help "Path to the directory to pack into a notebook")
+packOptionsParser =
+  PackOptions
+    <$> OA.argument OA.str (OA.metavar "DIRECTORY" <> OA.help "Path to the directory to pack into a notebook")
+    <*> OA.optional (OA.strOption $ OA.short 'o' <> OA.metavar "OUTPUT_PATH" <> OA.help "Path to write the notebook to")
 
 commandParser :: OA.Parser Command
 commandParser =
@@ -46,18 +53,19 @@ parseOpts = OA.customExecParser prefs opts
     prefs = OA.prefs OA.showHelpOnEmpty
     opts = OA.info (OA.helper <*> appOptionsParser) (OA.fullDesc <> OA.progDesc "Unpack a Jupyter notebook into its content, metadata and outputs")
 
-newtype NbpartsError = UnpackError Nbparts.UnpackError
+data NbpartsError = UnpackError Nbparts.UnpackError | PackError Nbparts.PackError
 
 main :: IO ()
 main = do
   opts <- parseOpts
-  case command opts of
-    Unpack (UnpackOptions notebook) -> do
-      result <- Nbparts.unpack notebook
-      case result of
-        Right _ -> pure ()
-        Left err -> exitError $ UnpackError err
-    Pack (PackOptions directory) -> print directory
+
+  result <- case command opts of
+    Unpack (UnpackOptions notebook) -> left UnpackError <$> Nbparts.unpack notebook
+    Pack (PackOptions nbpartsDir outputPath) -> left PackError <$> Nbparts.pack nbpartsDir outputPath
+
+  case result of
+    Right _ -> pure ()
+    Left err -> exitError err
 
 exitError :: NbpartsError -> IO a
 exitError err = do
@@ -74,3 +82,4 @@ renderError err = case err of
       <> T.show (snd Nbparts.recommendedNotebookFormat)
       <> "."
   UnpackError (Nbparts.UnpackPandocError pandocErr) -> Pandoc.renderError pandocErr
+  PackError (Nbparts.PackPandocError pandocErr) -> Pandoc.renderError pandocErr
