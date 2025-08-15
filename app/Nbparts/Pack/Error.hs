@@ -8,5 +8,7 @@ data PackError
   = PackPandocError PandocError
   | PackParseIpynbError Text
   | PackParseMetadataError Yaml.ParseException
+  | PackParseOutputsError Yaml.ParseException
   | PackMissingCellIdError
   | PackMissingCellMetadataError Text
+  | PackMissingCellOutputsError Text
