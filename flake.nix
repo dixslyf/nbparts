@@ -30,6 +30,9 @@
                 pkgs.ormolu
                 pkgs.pkg-config
                 pkgs.zlib
+
+                pkgs.python3Packages.jupyterlab
+                pkgs.nodePackages.json-diff
               ];
             in
             {

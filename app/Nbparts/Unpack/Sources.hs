@@ -45,7 +45,7 @@ listOutputMediaSrcs = Pandoc.query divImageSrc
 
 -- Adapted from https://github.com/jgm/pandoc/blob/7639e800c5af85e5ded862a6e218d54489d17bfc/src/Text/Pandoc/Class/IO.hs#L236-L245
 --
--- Pandoc's `extraMedia` unfortunately rewrites the source for images to always include the output directory as a prefix,
+-- Pandoc's `extractMedia` unfortunately rewrites the source for images to always include the output directory as a prefix,
 -- which is problematic since the rewritten paths will always be relative to the current directory (of the running nbparts)
 -- instead of the output markdown file. The implementation below allows specifying a prefix; this prefix is prepended to the
 -- output markdown file path, but not to the image sources.
