@@ -33,6 +33,7 @@ pack nbpartsDir maybeOutputPath = runExceptT $ do
   let mdPath = nbpartsDir </> basename <.> "md"
   mdText <- liftIO $ Text.readFile mdPath
   ipynbText <- ExceptT $ fmap (left Nbparts.PackPandocError) $ Pandoc.runIO $ do
+    Pandoc.setResourcePath [nbpartsDir]
     doc <- Pandoc.readMarkdown def {readerExtensions = Pandoc.pandocExtensions} mdText
     Pandoc.writeIpynb def doc
 
