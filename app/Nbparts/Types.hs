@@ -9,8 +9,40 @@ import Data.Map (Map)
 import Data.Text (Text)
 import GHC.Generics (Generic)
 
+data Source = Source
+  { cellType :: CellType,
+    cellId :: Text,
+    source :: [Text],
+    attachments :: Maybe UnembeddedMimeAttachments
+  }
+  deriving (Generic, Show)
+
+instance Aeson.ToJSON Source where
+  toJSON = Aeson.genericToJSON jsonOptions
+
+instance Aeson.FromJSON Source where
+  parseJSON = Aeson.genericParseJSON jsonOptions
+
+data CellType = Markdown | Heading {headingLevel :: Int} | Raw | Code
+  deriving (Generic, Show)
+
+instance Aeson.ToJSON CellType where
+  toJSON = Aeson.genericToJSON jsonOptions
+
+instance Aeson.FromJSON CellType where
+  parseJSON = Aeson.genericParseJSON jsonOptions
+
+newtype UnembeddedMimeAttachments = UnembeddedMimeAttachments (Map Text UnembeddedMimeBundle)
+  deriving (Generic, Show)
+
+instance Aeson.ToJSON UnembeddedMimeAttachments
+
+instance Aeson.FromJSON UnembeddedMimeAttachments
+
 data Metadata = Metadata
-  { notebook :: Ipynb.JSONMeta,
+  { formatMajor :: Int,
+    formatMinor :: Int,
+    notebook :: Ipynb.JSONMeta,
     cells :: Map Text CellMetadata -- Map of Cell IDs to attributes.
   }
   deriving (Generic, Show)
@@ -84,6 +116,10 @@ jsonOptions =
             contentsFieldName = "value"
           },
       constructorTagModifier = \case
+        "Markdown" -> "markdown"
+        "Heading" -> "heading"
+        "Raw" -> "raw"
+        "Code" -> "code"
         "BinaryData" -> "binary"
         "TextualData" -> "text"
         "JsonData" -> "json"

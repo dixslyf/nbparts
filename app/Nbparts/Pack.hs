@@ -1,44 +1,34 @@
 module Nbparts.Pack where
 
 import Control.Arrow (left)
-import Control.Monad.Except (ExceptT (ExceptT), runExceptT)
+import Control.Monad.Except (ExceptT (ExceptT), runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty (Config (..))
 import Data.Aeson.Encode.Pretty qualified as AesonPretty
-import Data.ByteString (ByteString)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Ipynb qualified as Ipynb
+import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
-import Data.Text qualified as Text
-import Data.Text.Encoding qualified as Text
-import Data.Text.IO qualified as Text
 import Data.Yaml qualified as Yaml
 import Nbparts.Pack.Error (PackError)
 import Nbparts.Pack.Error qualified as Nbparts
 import Nbparts.Pack.Metadata qualified as Nbparts
 import Nbparts.Pack.Outputs qualified as Nbparts
+import Nbparts.Pack.Sources qualified as Nbparts
 import Nbparts.Types qualified as Nbparts
-import System.FilePath ((<.>), (</>))
+import System.FilePath ((</>))
 import System.FilePath qualified as FilePath
-import Text.Pandoc (ReaderOptions (..))
-import Text.Pandoc qualified as Pandoc
-import Text.Pandoc.Options (def)
 
 pack :: FilePath -> Maybe FilePath -> IO (Either PackError ())
 pack nbpartsDir maybeOutputPath = runExceptT $ do
   -- `nbpartsDir` should be in the form "some_notebook.ipynb.nbparts".
   let fallbackOutputPath = FilePath.dropExtension nbpartsDir
-  let basename = FilePath.dropExtension $ FilePath.takeBaseName fallbackOutputPath
   let outputPath = Maybe.fromMaybe fallbackOutputPath maybeOutputPath
 
-  -- Convert the markdown into ipynb.
-  let mdPath = nbpartsDir </> basename <.> "md"
-  mdText <- liftIO $ Text.readFile mdPath
-  ipynbText <- ExceptT $ fmap (left Nbparts.PackPandocError) $ Pandoc.runIO $ do
-    Pandoc.setResourcePath [nbpartsDir]
-    doc <- Pandoc.readMarkdown def {readerExtensions = Pandoc.pandocExtensions} mdText
-    Pandoc.writeIpynb def doc
+  -- Read sources.
+  let sourcesPath = nbpartsDir </> "sources.yaml"
+  (sources :: [Nbparts.Source]) <- ExceptT (left Nbparts.PackParseSourcesError <$> Yaml.decodeFileEither sourcesPath)
 
   -- Read metadata.
   -- TODO: Don't fail if file is missing — just warn.
@@ -49,29 +39,35 @@ pack nbpartsDir maybeOutputPath = runExceptT $ do
   let outputsPath = nbpartsDir </> "outputs.yaml"
   (unembeddedOutputs :: Nbparts.UnembeddedOutputs) <- ExceptT (left Nbparts.PackParseOutputsError <$> Yaml.decodeFileEither outputsPath)
 
+  -- Create and export the notebook.
   let processNb :: (Aeson.ToJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> ExceptT PackError IO ()
       processNb nb = do
-        nbWithMeta <- ExceptT $ pure $ Nbparts.fillMetadata nb metadata
-        nbWithMetaAndOutputs <- ExceptT $ Nbparts.fillOutputs nbpartsDir unembeddedOutputs nbWithMeta
-        liftIO $ exportNotebook outputPath nbWithMetaAndOutputs
+        filledNb <- fillNotebook nbpartsDir sources metadata unembeddedOutputs nb
+        liftIO $ exportNotebook outputPath filledNb
 
-  let ipynbBytes = Text.encodeUtf8 ipynbText
-  decodeNotebookThen
-    processNb
-    (ExceptT . pure . Left)
-    ipynbBytes
+  let (Nbparts.Metadata major minor _ _) = metadata
+  case major of
+    3 -> processNb $ (emptyNotebook @Ipynb.NbV3) (major, minor)
+    4 -> processNb $ (emptyNotebook @Ipynb.NbV4) (major, minor)
+    _ -> throwError $ Nbparts.PackUnsupportedNotebookFormat (major, minor)
 
-decodeNotebookThen :: (forall a. (Aeson.ToJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> b) -> (PackError -> b) -> ByteString -> b
-decodeNotebookThen onSuccess onError bytes =
-  case Aeson.eitherDecodeStrict bytes of
-    Right (nb :: Ipynb.Notebook Ipynb.NbV4) -> onSuccess nb
-    Left _ ->
-      case Aeson.eitherDecodeStrict bytes of
-        Right (nb :: Ipynb.Notebook Ipynb.NbV3) -> onSuccess nb
-        Left message -> onError (Nbparts.PackParseIpynbError (Text.pack message))
+fillNotebook ::
+  FilePath ->
+  [Nbparts.Source] ->
+  Nbparts.Metadata ->
+  Nbparts.UnembeddedOutputs ->
+  Ipynb.Notebook a ->
+  ExceptT PackError IO (Ipynb.Notebook a)
+fillNotebook nbpartsDir sources metadata unembeddedOutputs nb = do
+  nbWithSources <- liftIO $ Nbparts.fillSources nbpartsDir nb sources
+  nbWithSourcesAndMeta <- ExceptT $ pure $ Nbparts.fillMetadata nbWithSources metadata
+  ExceptT $ Nbparts.fillOutputs nbpartsDir unembeddedOutputs nbWithSourcesAndMeta
 
 prettyConfig :: AesonPretty.Config
 prettyConfig = AesonPretty.defConfig {confIndent = AesonPretty.Spaces 1}
 
 exportNotebook :: (Aeson.ToJSON (Ipynb.Notebook a)) => FilePath -> Ipynb.Notebook a -> IO ()
 exportNotebook fp = LazyByteString.writeFile fp . AesonPretty.encodePretty' prettyConfig
+
+emptyNotebook :: (Int, Int) -> Ipynb.Notebook a
+emptyNotebook format = Ipynb.Notebook (Ipynb.JSONMeta Map.empty) format []

@@ -5,6 +5,7 @@ module Main where
 import Control.Arrow (left)
 import Control.Exception qualified as Exception
 import Data.Text qualified as T
+import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
 import Nbparts.Pack qualified as Nbparts
 import Nbparts.Pack.Error qualified as Nbparts
@@ -14,7 +15,6 @@ import Nbparts.Unpack.Error qualified as Nbparts
 import Options.Applicative qualified as OA
 import System.Exit (ExitCode (ExitFailure), exitWith)
 import System.IO (stderr)
-import Text.Pandoc qualified as Pandoc
 
 newtype AppOptions = AppOptions
   { command :: Command
@@ -83,11 +83,10 @@ renderError err = case err of
       <> "."
       <> T.show (snd Nbparts.recommendedNotebookFormat)
       <> "."
-  UnpackError (Nbparts.UnpackPandocError pandocErr) -> Pandoc.renderError pandocErr
-  PackError (Nbparts.PackParseIpynbError message) -> "Failed to parse notebook: " <> message
+  PackError (Nbparts.PackUnsupportedNotebookFormat (major, minor)) -> "Unsupported notebook format: " <> Text.show major <> "." <> Text.show minor
+  PackError (Nbparts.PackParseSourcesError parseErr) -> "Failed to parse sources: " <> T.pack (Exception.displayException parseErr)
   PackError (Nbparts.PackParseMetadataError parseErr) -> "Failed to parse metadata: " <> T.pack (Exception.displayException parseErr)
   PackError (Nbparts.PackParseOutputsError parseErr) -> "Failed to parse outputs: " <> T.pack (Exception.displayException parseErr)
-  PackError (Nbparts.PackPandocError pandocErr) -> Pandoc.renderError pandocErr
   PackError Nbparts.PackMissingCellIdError -> "Markdown content contains missing cell ID"
   PackError (Nbparts.PackMissingCellMetadataError cellId) -> "Could not find metadata for cell ID: " <> cellId
   PackError (Nbparts.PackMissingCellOutputsError cellId) -> "Could not find outputs for cell ID: " <> cellId

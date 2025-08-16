@@ -9,10 +9,10 @@ import Nbparts.Unpack.Error (UnpackError)
 import Nbparts.Unpack.Error qualified as Nbparts
 
 collectMetadata :: Ipynb.Notebook a -> Either UnpackError Nbparts.Metadata
-collectMetadata (Ipynb.Notebook nbmeta _format cells) = do
+collectMetadata (Ipynb.Notebook nbmeta (formatMajor, formatMinor) cells) = do
   cellsMetaList <- traverse extractCellMetadata cells
   let cellsMeta = Map.fromList cellsMetaList
-  return Nbparts.Metadata {notebook = nbmeta, cells = cellsMeta}
+  return Nbparts.Metadata {formatMajor, formatMinor, notebook = nbmeta, cells = cellsMeta}
 
 extractCellMetadata :: Ipynb.Cell a -> Either UnpackError (Text, Nbparts.CellMetadata)
 extractCellMetadata (Ipynb.Cell (Ipynb.Code exeCount _) maybeCellId _ meta _) = case maybeCellId of
