@@ -24,11 +24,6 @@ import Text.Libyaml qualified as Libyaml
 recommendedNotebookFormat :: (Int, Int)
 recommendedNotebookFormat = (4, 5)
 
--- NOTE: Currently, we parse the notebook twice: once by Pandoc's `readIpynb`
--- and once more using `Aeson.eitherDecodeStrict`. I don't think there is a way
--- to avoid this since Pandoc does not expose an API to create a document directly
--- from an `Ipynb.Notebook`. We also cannot use the Pandoc document's metadata since
--- we lose type information about numbers and null (i.e., lossy).
 unpack :: FilePath -> IO (Either UnpackError ())
 unpack notebookPath = runExceptT $ do
   notebookContents <- liftIO $ TIO.readFile notebookPath

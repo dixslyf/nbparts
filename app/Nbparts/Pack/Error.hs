@@ -3,11 +3,9 @@ module Nbparts.Pack.Error where
 import Data.Text (Text)
 import Data.Yaml qualified as Yaml
 import Nbparts.Types qualified as Nbparts
-import Text.Pandoc (PandocError)
 
 data PackError
-  = PackPandocError PandocError
-  | PackParseIpynbError Text
+  = PackParseIpynbError Text
   | PackParseSourcesError Yaml.ParseException
   | PackParseMetadataError Yaml.ParseException
   | PackParseOutputsError Yaml.ParseException
