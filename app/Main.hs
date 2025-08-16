@@ -5,6 +5,7 @@ module Main where
 import Control.Arrow (left)
 import Control.Exception qualified as Exception
 import Data.Text qualified as T
+import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
 import Nbparts.Pack qualified as Nbparts
 import Nbparts.Pack.Error qualified as Nbparts
@@ -82,7 +83,7 @@ renderError err = case err of
       <> "."
       <> T.show (snd Nbparts.recommendedNotebookFormat)
       <> "."
-  PackError (Nbparts.PackParseIpynbError message) -> "Failed to parse notebook: " <> message
+  PackError (Nbparts.PackUnsupportedNotebookFormat (major, minor)) -> "Unsupported notebook format: " <> Text.show major <> "." <> Text.show minor
   PackError (Nbparts.PackParseSourcesError parseErr) -> "Failed to parse sources: " <> T.pack (Exception.displayException parseErr)
   PackError (Nbparts.PackParseMetadataError parseErr) -> "Failed to parse metadata: " <> T.pack (Exception.displayException parseErr)
   PackError (Nbparts.PackParseOutputsError parseErr) -> "Failed to parse outputs: " <> T.pack (Exception.displayException parseErr)

@@ -40,7 +40,9 @@ instance Aeson.ToJSON UnembeddedMimeAttachments
 instance Aeson.FromJSON UnembeddedMimeAttachments
 
 data Metadata = Metadata
-  { notebook :: Ipynb.JSONMeta,
+  { formatMajor :: Int,
+    formatMinor :: Int,
+    notebook :: Ipynb.JSONMeta,
     cells :: Map Text CellMetadata -- Map of Cell IDs to attributes.
   }
   deriving (Generic, Show)

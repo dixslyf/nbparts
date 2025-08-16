@@ -9,7 +9,11 @@ import Nbparts.Pack.Error qualified as Nbparts
 import Nbparts.Types qualified as Nbparts
 
 fillMetadata :: Ipynb.Notebook a -> Nbparts.Metadata -> Either Nbparts.PackError (Ipynb.Notebook a)
-fillMetadata (Ipynb.Notebook _ format cells) (Nbparts.Metadata nbMeta cellsMeta) = Ipynb.Notebook nbMeta format <$> filledCells
+fillMetadata (Ipynb.Notebook _ _ cells) (Nbparts.Metadata formatMajor formatMinor nbMeta cellsMeta) =
+  Ipynb.Notebook
+    nbMeta
+    (formatMajor, formatMinor)
+    <$> filledCells
   where
     filledCells = traverse (fillCellMetadata cellsMeta) cells
 

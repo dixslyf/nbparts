@@ -1,7 +1,7 @@
 module Nbparts.Pack where
 
 import Control.Arrow (left)
-import Control.Monad.Except (ExceptT (ExceptT), runExceptT)
+import Control.Monad.Except (ExceptT (ExceptT), runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty (Config (..))
@@ -39,12 +39,29 @@ pack nbpartsDir maybeOutputPath = runExceptT $ do
   let outputsPath = nbpartsDir </> "outputs.yaml"
   (unembeddedOutputs :: Nbparts.UnembeddedOutputs) <- ExceptT (left Nbparts.PackParseOutputsError <$> Yaml.decodeFileEither outputsPath)
 
-  -- TODO: Read notebook format.
-  let nb = (emptyNotebook @Ipynb.NbV4) (4, 5)
+  -- Create and export the notebook.
+  let processNb :: (Aeson.ToJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> ExceptT PackError IO ()
+      processNb nb = do
+        filledNb <- fillNotebook nbpartsDir sources metadata unembeddedOutputs nb
+        liftIO $ exportNotebook outputPath filledNb
+
+  let (Nbparts.Metadata major minor _ _) = metadata
+  case major of
+    3 -> processNb $ (emptyNotebook @Ipynb.NbV3) (major, minor)
+    4 -> processNb $ (emptyNotebook @Ipynb.NbV4) (major, minor)
+    _ -> throwError $ Nbparts.PackUnsupportedNotebookFormat (major, minor)
+
+fillNotebook ::
+  FilePath ->
+  [Nbparts.Source] ->
+  Nbparts.Metadata ->
+  Nbparts.UnembeddedOutputs ->
+  Ipynb.Notebook a ->
+  ExceptT PackError IO (Ipynb.Notebook a)
+fillNotebook nbpartsDir sources metadata unembeddedOutputs nb = do
   nbWithSources <- liftIO $ Nbparts.fillSources nbpartsDir nb sources
   nbWithSourcesAndMeta <- ExceptT $ pure $ Nbparts.fillMetadata nbWithSources metadata
-  nbWithSourcesMetaAndOutputs <- ExceptT $ Nbparts.fillOutputs nbpartsDir unembeddedOutputs nbWithSourcesAndMeta
-  liftIO $ exportNotebook outputPath nbWithSourcesMetaAndOutputs
+  ExceptT $ Nbparts.fillOutputs nbpartsDir unembeddedOutputs nbWithSourcesAndMeta
 
 prettyConfig :: AesonPretty.Config
 prettyConfig = AesonPretty.defConfig {confIndent = AesonPretty.Spaces 1}

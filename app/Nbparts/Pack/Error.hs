@@ -5,7 +5,7 @@ import Data.Yaml qualified as Yaml
 import Nbparts.Types qualified as Nbparts
 
 data PackError
-  = PackParseIpynbError Text
+  = PackUnsupportedNotebookFormat (Int, Int)
   | PackParseSourcesError Yaml.ParseException
   | PackParseMetadataError Yaml.ParseException
   | PackParseOutputsError Yaml.ParseException
