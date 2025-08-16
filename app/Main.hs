@@ -8,6 +8,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Nbparts.Pack qualified as Nbparts
 import Nbparts.Pack.Error qualified as Nbparts
+import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack qualified as Nbparts
 import Nbparts.Unpack.Error qualified as Nbparts
 import Options.Applicative qualified as OA
@@ -90,3 +91,12 @@ renderError err = case err of
   PackError Nbparts.PackMissingCellIdError -> "Markdown content contains missing cell ID"
   PackError (Nbparts.PackMissingCellMetadataError cellId) -> "Could not find metadata for cell ID: " <> cellId
   PackError (Nbparts.PackMissingCellOutputsError cellId) -> "Could not find outputs for cell ID: " <> cellId
+  PackError (Nbparts.PackCellMetadataTypeMismatch expected actual) ->
+    "Cell metadata type mismatch. Expected: "
+      <> renderCellMetadataTag expected
+      <> ", but got: "
+      <> renderCellMetadataTag actual
+
+renderCellMetadataTag :: Nbparts.CellMetadataTag -> T.Text
+renderCellMetadataTag Nbparts.CodeCellMetadataTag = "code cell metadata"
+renderCellMetadataTag Nbparts.GenericCellMetadataTag = "generic cell metadata"

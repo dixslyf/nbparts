@@ -14,7 +14,10 @@ collectMetadata (Ipynb.Notebook nbmeta _format cells) = do
   let cellsMeta = Map.fromList cellsMetaList
   return Nbparts.Metadata {notebook = nbmeta, cells = cellsMeta}
 
-extractCellMetadata :: Ipynb.Cell a -> Either UnpackError (Text, Ipynb.JSONMeta)
+extractCellMetadata :: Ipynb.Cell a -> Either UnpackError (Text, Nbparts.CellMetadata)
+extractCellMetadata (Ipynb.Cell (Ipynb.Code exeCount _) maybeCellId _ meta _) = case maybeCellId of
+  Just cellId -> Right (cellId, Nbparts.CodeCellMetadata exeCount meta)
+  Nothing -> Left Nbparts.UnpackMissingCellIdError
 extractCellMetadata (Ipynb.Cell _ maybeCellId _ meta _) = case maybeCellId of
-  Just cellId -> Right (cellId, meta)
+  Just cellId -> Right (cellId, Nbparts.GenericCellMetadata meta)
   Nothing -> Left Nbparts.UnpackMissingCellIdError

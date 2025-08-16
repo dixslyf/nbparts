@@ -11,13 +11,27 @@ import GHC.Generics (Generic)
 
 data Metadata = Metadata
   { notebook :: Ipynb.JSONMeta,
-    cells :: Map Text Ipynb.JSONMeta -- Map of Cell IDs to key-value attribute pairs.
+    cells :: Map Text CellMetadata -- Map of Cell IDs to attributes.
   }
   deriving (Generic, Show)
 
 instance Aeson.ToJSON Metadata
 
 instance Aeson.FromJSON Metadata
+
+data CellMetadata
+  = CodeCellMetadata {executionCount :: Maybe Int, cellMetadata :: Ipynb.JSONMeta}
+  | GenericCellMetadata Ipynb.JSONMeta
+  deriving (Generic, Show)
+
+-- For error reporting.
+data CellMetadataTag = CodeCellMetadataTag | GenericCellMetadataTag
+
+instance Aeson.ToJSON CellMetadata where
+  toJSON = Aeson.genericToJSON jsonOptions
+
+instance Aeson.FromJSON CellMetadata where
+  parseJSON = Aeson.genericParseJSON jsonOptions
 
 type Outputs a = Map Text [Ipynb.Output a] -- Map of Cell IDs to outputs.
 
@@ -77,5 +91,7 @@ jsonOptions =
         "DisplayData" -> "display-data"
         "ExecuteResult" -> "execute-result"
         "Err" -> "error"
+        "CodeCellMetadata" -> "code-cell"
+        "GenericCellMetadata" -> "generic-cell"
         other -> other
     }
