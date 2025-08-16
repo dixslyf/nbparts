@@ -49,6 +49,7 @@ executable nbparts
         aeson-pretty ^>=0.8.10,
         yaml ^>=0.11.11.2,
         libyaml ^>=0.1.4,
-        crypton ^>=1.0.4
+        crypton ^>=1.0.4,
+        mime-types ^>= 0.1.2.0
     hs-source-dirs: app
     default-language: GHC2021
