@@ -4,6 +4,10 @@ import Control.Arrow (left)
 import Control.Monad.Except (ExceptT (ExceptT), runExceptT)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
+import Data.Aeson.Encode.Pretty (Config (..))
+import Data.Aeson.Encode.Pretty qualified as AesonPretty
+import Data.ByteString (ByteString)
+import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Ipynb qualified as Ipynb
 import Data.Maybe qualified as Maybe
 import Data.Text qualified as Text
@@ -45,16 +49,29 @@ pack nbpartsDir maybeOutputPath = runExceptT $ do
   let outputsPath = nbpartsDir </> "outputs.yaml"
   (unembeddedOutputs :: Nbparts.UnembeddedOutputs) <- ExceptT (left Nbparts.PackParseOutputsError <$> Yaml.decodeFileEither outputsPath)
 
-  let processNb :: Ipynb.Notebook a -> (FilePath -> Ipynb.Notebook a -> IO ()) -> ExceptT PackError IO ()
-      processNb nb encode = do
+  let processNb :: (Aeson.ToJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> ExceptT PackError IO ()
+      processNb nb = do
         nbWithMeta <- ExceptT $ pure $ Nbparts.fillMetadata nb metadata
         nbWithMetaAndOutputs <- ExceptT $ Nbparts.fillOutputs nbpartsDir unembeddedOutputs nbWithMeta
-        liftIO $ encode outputPath nbWithMetaAndOutputs
+        liftIO $ exportNotebook outputPath nbWithMetaAndOutputs
 
   let ipynbBytes = Text.encodeUtf8 ipynbText
-  case Aeson.eitherDecodeStrict ipynbBytes of
-    Right (nb :: Ipynb.Notebook Ipynb.NbV4) -> processNb nb Aeson.encodeFile
+  decodeNotebookThen
+    processNb
+    (ExceptT . pure . Left)
+    ipynbBytes
+
+decodeNotebookThen :: (forall a. (Aeson.ToJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> b) -> (PackError -> b) -> ByteString -> b
+decodeNotebookThen onSuccess onError bytes =
+  case Aeson.eitherDecodeStrict bytes of
+    Right (nb :: Ipynb.Notebook Ipynb.NbV4) -> onSuccess nb
     Left _ ->
-      case Aeson.eitherDecodeStrict ipynbBytes of
-        Right (nb :: Ipynb.Notebook Ipynb.NbV3) -> processNb nb Aeson.encodeFile
-        Left message -> ExceptT $ pure $ Left $ Nbparts.PackParseIpynbError (Text.pack message)
+      case Aeson.eitherDecodeStrict bytes of
+        Right (nb :: Ipynb.Notebook Ipynb.NbV3) -> onSuccess nb
+        Left message -> onError (Nbparts.PackParseIpynbError (Text.pack message))
+
+prettyConfig :: AesonPretty.Config
+prettyConfig = AesonPretty.defConfig {confIndent = AesonPretty.Spaces 1}
+
+exportNotebook :: (Aeson.ToJSON (Ipynb.Notebook a)) => FilePath -> Ipynb.Notebook a -> IO ()
+exportNotebook fp = LazyByteString.writeFile fp . AesonPretty.encodePretty' prettyConfig

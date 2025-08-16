@@ -43,6 +43,7 @@ executable nbparts
         ipynb ^>=0.2,
         containers ^>=0.7,
         aeson ^>=2.2.3.0,
+        aeson-pretty ^>=0.8.10,
         yaml ^>=0.11.11.2,
         libyaml ^>=0.1.4,
         crypton ^>=1.0.4
