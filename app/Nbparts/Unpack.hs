@@ -12,6 +12,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.Yaml qualified as Yaml
+import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack.Error (UnpackError)
 import Nbparts.Unpack.Error qualified as Nbparts
 import Nbparts.Unpack.Metadata qualified as Nbparts
@@ -42,20 +43,21 @@ unpack notebookPath = runExceptT $ do
   let outputMediaSubdir = "outputs-media"
   liftIO $ Directory.createDirectoryIfMissing True (exportDirectory </> outputMediaSubdir)
 
-  -- Extract and export metadata and outputs.
+  let extractMetadataAndOutputs :: Ipynb.Notebook a -> ExceptT UnpackError IO (Nbparts.Metadata, Nbparts.UnembeddedOutputs)
+      extractMetadataAndOutputs nb = do
+        meta <- ExceptT $ pure $ Nbparts.collectMetadata nb
+        outputs <- ExceptT $ pure $ Nbparts.collectOutputs nb
+        unembeddedOutputs <- liftIO $ Nbparts.unembedOutputs exportDirectory outputMediaSubdir outputs
+        return (meta, unembeddedOutputs)
+
   let notebookBytes = TE.encodeUtf8 notebookContents
   (metadata, outputs) <-
-    ExceptT $
-      decodeNotebookWith
-        ( \nb -> do
-            let eMeta = Nbparts.collectMetadata nb
-            let eOutputs = Nbparts.collectOutputs nb
-            eUnembededOutputs <- traverse (Nbparts.unembedOutputs exportDirectory outputMediaSubdir) eOutputs
-            return $ (,) <$> eMeta <*> eUnembededOutputs
-        )
-        (pure . Left)
-        notebookBytes
+    decodeNotebookThen
+      extractMetadataAndOutputs
+      (ExceptT . pure . Left)
+      notebookBytes
 
+  -- Export metadata and outputs.
   let metadataPath = exportDirectory </> "metadata.yaml"
   liftIO $ Yaml.encodeFile metadataPath metadata
   let outputsPath = exportDirectory </> "outputs.yaml"
@@ -80,8 +82,8 @@ unpack notebookPath = runExceptT $ do
   let markdownPath = exportDirectory </> (FilePath.takeFileName notebookPath -<.> ".md")
   liftIO $ TIO.writeFile markdownPath markdownText
 
-decodeNotebookWith :: (forall a. Ipynb.Notebook a -> b) -> (UnpackError -> b) -> ByteString -> b
-decodeNotebookWith onSuccess onError bytes =
+decodeNotebookThen :: (forall a. (Aeson.ToJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> b) -> (UnpackError -> b) -> ByteString -> b
+decodeNotebookThen onSuccess onError bytes =
   case Aeson.eitherDecodeStrict bytes of
     Right (nb :: Ipynb.Notebook Ipynb.NbV4) -> onSuccess nb
     Left _ ->
