@@ -85,6 +85,7 @@ renderError err = case err of
       <> "."
   UnpackError (Nbparts.UnpackPandocError pandocErr) -> Pandoc.renderError pandocErr
   PackError (Nbparts.PackParseIpynbError message) -> "Failed to parse notebook: " <> message
+  PackError (Nbparts.PackParseSourcesError parseErr) -> "Failed to parse sources: " <> T.pack (Exception.displayException parseErr)
   PackError (Nbparts.PackParseMetadataError parseErr) -> "Failed to parse metadata: " <> T.pack (Exception.displayException parseErr)
   PackError (Nbparts.PackParseOutputsError parseErr) -> "Failed to parse outputs: " <> T.pack (Exception.displayException parseErr)
   PackError (Nbparts.PackPandocError pandocErr) -> Pandoc.renderError pandocErr

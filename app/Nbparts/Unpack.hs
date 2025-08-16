@@ -3,7 +3,6 @@
 module Nbparts.Unpack where
 
 import Control.Monad.Except (ExceptT (..), runExceptT)
-import Control.Monad.Except qualified as ExceptT
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
 import Data.ByteString (ByteString)
@@ -19,11 +18,8 @@ import Nbparts.Unpack.Metadata qualified as Nbparts
 import Nbparts.Unpack.Outputs qualified as Nbparts
 import Nbparts.Unpack.Sources qualified as Nbparts
 import System.Directory qualified as Directory
-import System.FilePath ((-<.>), (<.>), (</>))
-import System.FilePath qualified as FilePath
+import System.FilePath ((<.>), (</>))
 import Text.Libyaml qualified as Libyaml
-import Text.Pandoc (WriterOptions (..), def, pandocExtensions)
-import Text.Pandoc qualified as Pandoc
 
 recommendedNotebookFormat :: (Int, Int)
 recommendedNotebookFormat = (4, 5)
@@ -38,49 +34,40 @@ unpack notebookPath = runExceptT $ do
   notebookContents <- liftIO $ TIO.readFile notebookPath
 
   let exportDirectory = notebookPath <.> "nbparts"
+
+  let sourceMediaSubdir = "media"
+  liftIO $ Directory.createDirectoryIfMissing True (exportDirectory </> sourceMediaSubdir)
+
   liftIO $ Directory.createDirectoryIfMissing True exportDirectory
 
   let outputMediaSubdir = "outputs-media"
   liftIO $ Directory.createDirectoryIfMissing True (exportDirectory </> outputMediaSubdir)
 
-  let extractMetadataAndOutputs :: Ipynb.Notebook a -> ExceptT UnpackError IO (Nbparts.Metadata, Nbparts.UnembeddedOutputs)
-      extractMetadataAndOutputs nb = do
+  -- Collect and export metadata and outputs.
+  let processNb :: Ipynb.Notebook a -> ExceptT UnpackError IO (Nbparts.Metadata, Nbparts.UnembeddedOutputs, [Nbparts.Source])
+      processNb nb = do
         meta <- ExceptT $ pure $ Nbparts.collectMetadata nb
         outputs <- ExceptT $ pure $ Nbparts.collectOutputs nb
         unembeddedOutputs <- liftIO $ Nbparts.unembedOutputs exportDirectory outputMediaSubdir outputs
-        return (meta, unembeddedOutputs)
+        sources <- ExceptT $ liftIO $ Nbparts.collectSources exportDirectory sourceMediaSubdir nb
+        return (meta, unembeddedOutputs, sources)
 
   let notebookBytes = TE.encodeUtf8 notebookContents
-  (metadata, outputs) <-
+  (metadata, outputs, sources) <-
     decodeNotebookThen
-      extractMetadataAndOutputs
+      processNb
       (ExceptT . pure . Left)
       notebookBytes
 
-  -- Export metadata and outputs.
   let metadataPath = exportDirectory </> "metadata.yaml"
   liftIO $ Yaml.encodeFile metadataPath metadata
+
+  let yamlOptions = Yaml.setStringStyle nbpartsYamlStringStyle Yaml.defaultEncodeOptions
   let outputsPath = exportDirectory </> "outputs.yaml"
-  let outputsYamlOptions = Yaml.setStringStyle outputsYamlStringStyle Yaml.defaultEncodeOptions
-  liftIO $ Yaml.encodeFileWith outputsYamlOptions outputsPath outputs
+  liftIO $ Yaml.encodeFileWith yamlOptions outputsPath outputs
 
-  -- Convert to markdown, extract outputs and export authored attachments.
-  convertResult <-
-    liftIO $
-      Pandoc.runIO $
-        do
-          doc <- Pandoc.readIpynb def notebookContents
-          mediaAdjustedDoc <- Nbparts.extractAuthoredMedia exportDirectory "media" doc
-          let processedDoc = Nbparts.removeCellMetadata . Nbparts.removeCellOutputs $ mediaAdjustedDoc
-          Pandoc.writeMarkdown def {writerExtensions = pandocExtensions} processedDoc
-
-  markdownText <- case convertResult of
-    Right markdown -> pure markdown
-    Left err -> ExceptT.throwError $ Nbparts.UnpackPandocError err
-
-  -- Export markdown.
-  let markdownPath = exportDirectory </> (FilePath.takeFileName notebookPath -<.> ".md")
-  liftIO $ TIO.writeFile markdownPath markdownText
+  let sourcesPath = exportDirectory </> "sources.yaml"
+  liftIO $ Yaml.encodeFileWith yamlOptions sourcesPath sources
 
 decodeNotebookThen :: (forall a. (Aeson.ToJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> b) -> (UnpackError -> b) -> ByteString -> b
 decodeNotebookThen onSuccess onError bytes =
@@ -98,8 +85,8 @@ hasNewlineSuffix :: T.Text -> Bool
 hasNewlineSuffix = T.isSuffixOf "\n"
 
 -- Based on Yaml's default string style.
-outputsYamlStringStyle :: T.Text -> (Libyaml.Tag, Libyaml.Style)
-outputsYamlStringStyle s
+nbpartsYamlStringStyle :: T.Text -> (Libyaml.Tag, Libyaml.Style)
+nbpartsYamlStringStyle s
   | hasOnlyOneNewline s && hasNewlineSuffix s = (Libyaml.NoTag, Libyaml.DoubleQuoted)
   | "\n" `T.isInfixOf` s = (Libyaml.NoTag, Libyaml.Literal)
   | Yaml.isSpecialString s = (Libyaml.NoTag, Libyaml.SingleQuoted)

@@ -24,10 +24,13 @@ executable nbparts
         Nbparts.Unpack.Sources,
         Nbparts.Unpack.Outputs,
         Nbparts.Unpack.Metadata,
+        Nbparts.Unpack.Mime,
         Nbparts.Unpack.Error,
         Nbparts.Pack,
+        Nbparts.Pack.Sources,
         Nbparts.Pack.Outputs,
         Nbparts.Pack.Metadata,
+        Nbparts.Pack.Mime,
         Nbparts.Pack.Error
     -- other-extensions:
     build-depends:

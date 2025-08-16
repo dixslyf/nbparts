@@ -8,6 +8,7 @@ import Text.Pandoc (PandocError)
 data PackError
   = PackPandocError PandocError
   | PackParseIpynbError Text
+  | PackParseSourcesError Yaml.ParseException
   | PackParseMetadataError Yaml.ParseException
   | PackParseOutputsError Yaml.ParseException
   | PackMissingCellIdError

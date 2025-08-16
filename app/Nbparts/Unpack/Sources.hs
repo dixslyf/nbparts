@@ -1,14 +1,37 @@
 module Nbparts.Unpack.Sources where
 
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.Except (ExceptT (..), runExceptT)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Ipynb qualified as Ipynb
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Nbparts.Types qualified as Nbparts
+import Nbparts.Unpack.Error qualified as Nbparts
+import Nbparts.Unpack.Mime qualified as Nbparts
 import System.FilePath
 import Text.Pandoc (Pandoc)
 import Text.Pandoc qualified as Pandoc
+import Text.Pandoc.Class.IO qualified as PandocIO
 import Text.Pandoc.MediaBag qualified as Pandoc
 import Text.Pandoc.Walk qualified as Pandoc
-import Text.Pandoc.Class.IO qualified as PandocIO
+
+collectSources :: FilePath -> FilePath -> Ipynb.Notebook a -> IO (Either Nbparts.UnpackError [Nbparts.Source])
+collectSources dirPrefix subdir (Ipynb.Notebook _ _ cells) = sequence <$> traverse (convertCell dirPrefix subdir) cells
+
+convertCell :: FilePath -> FilePath -> Ipynb.Cell a -> IO (Either Nbparts.UnpackError Nbparts.Source)
+convertCell dirPrefix subdir (Ipynb.Cell cellType maybeCellId (Ipynb.Source source) _ attachments) = runExceptT $ do
+  unembeddedMimeAttachments <- liftIO $ traverse (Nbparts.unembedMimeAttachments dirPrefix subdir) attachments
+  ExceptT $
+    maybe
+      (pure $ Left Nbparts.UnpackMissingCellIdError)
+      (\cellId -> pure $ Right $ Nbparts.Source (convertCellType cellType) cellId source unembeddedMimeAttachments)
+      maybeCellId
+
+convertCellType :: Ipynb.CellType a -> Nbparts.CellType
+convertCellType Ipynb.Markdown = Nbparts.Markdown
+convertCellType (Ipynb.Heading headingLevel) = Nbparts.Heading headingLevel
+convertCellType Ipynb.Raw = Nbparts.Raw
+convertCellType (Ipynb.Code _ _) = Nbparts.Code
 
 removeCellMetadata :: Pandoc -> Pandoc
 removeCellMetadata = Pandoc.walk filterCellMetadata
@@ -49,8 +72,8 @@ listOutputMediaSrcs = Pandoc.query divImageSrc
 -- which is problematic since the rewritten paths will always be relative to the current directory (of the running nbparts)
 -- instead of the output markdown file. The implementation below allows specifying a prefix; this prefix is prepended to the
 -- output markdown file path, but not to the image sources.
-extractAuthoredMedia :: (Pandoc.PandocMonad m, MonadIO m) => FilePath -> FilePath -> Pandoc -> m Pandoc
-extractAuthoredMedia dirPrefix dir doc = do
+extractSourceMedia :: (Pandoc.PandocMonad m, MonadIO m) => FilePath -> FilePath -> Pandoc -> m Pandoc
+extractSourceMedia dirPrefix dir doc = do
   let outdir = dirPrefix </> dir
   media <- Pandoc.getMediaBag
 

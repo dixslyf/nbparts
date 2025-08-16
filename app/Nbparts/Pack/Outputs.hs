@@ -2,13 +2,12 @@ module Nbparts.Pack.Outputs where
 
 import Control.Monad.Except (ExceptT (..), runExceptT)
 import Control.Monad.IO.Class (liftIO)
-import Data.ByteString qualified as ByteString
 import Data.Ipynb (Output (..))
 import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
 import Nbparts.Pack.Error qualified as Nbparts
+import Nbparts.Pack.Mime qualified as Nbparts
 import Nbparts.Types qualified as Nbparts
-import System.FilePath ((</>))
 
 fillOutputs :: FilePath -> Nbparts.UnembeddedOutputs -> Ipynb.Notebook a -> IO (Either Nbparts.PackError (Ipynb.Notebook a))
 fillOutputs prefixDir unembeddedOutputs (Ipynb.Notebook meta format cells) = runExceptT $ do
@@ -28,17 +27,10 @@ adjustOutputsPaths prefixDir = Map.map (map $ adjustOutputPaths prefixDir)
 
 adjustOutputPaths :: FilePath -> Nbparts.UnembeddedOutput -> Nbparts.UnembeddedOutput
 adjustOutputPaths prefixDir (Nbparts.DisplayData displayData metadata) =
-  Nbparts.DisplayData (adjustMimeBundlePaths prefixDir displayData) metadata
+  Nbparts.DisplayData (Nbparts.adjustMimeBundlePaths prefixDir displayData) metadata
 adjustOutputPaths prefixDir (Nbparts.ExecuteResult count executeData metadata) =
-  Nbparts.ExecuteResult count (adjustMimeBundlePaths prefixDir executeData) metadata
+  Nbparts.ExecuteResult count (Nbparts.adjustMimeBundlePaths prefixDir executeData) metadata
 adjustOutputPaths _ output = output
-
-adjustMimeBundlePaths :: FilePath -> Nbparts.UnembeddedMimeBundle -> Nbparts.UnembeddedMimeBundle
-adjustMimeBundlePaths prefixDir = Map.map (adjustMimeDataPaths prefixDir)
-
-adjustMimeDataPaths :: FilePath -> Nbparts.UnembeddedMimeData -> Nbparts.UnembeddedMimeData
-adjustMimeDataPaths prefixDir (Nbparts.BinaryData path) = Nbparts.BinaryData $ prefixDir </> path
-adjustMimeDataPaths _ mimeData = mimeData
 
 embedOutputs :: Nbparts.UnembeddedOutputs -> IO (Nbparts.Outputs a)
 embedOutputs = traverse $ mapM embedOutput
@@ -46,14 +38,14 @@ embedOutputs = traverse $ mapM embedOutput
 embedOutput :: Nbparts.UnembeddedOutput -> IO (Ipynb.Output a)
 embedOutput (Nbparts.Stream streamName streamText) = pure $ Ipynb.Stream {streamName, streamText = Ipynb.Source streamText}
 embedOutput (Nbparts.DisplayData unembeddedDisplayData displayMetadata) = do
-  displayData <- embedMimeBundle unembeddedDisplayData
+  displayData <- Nbparts.embedMimeBundle unembeddedDisplayData
   return
     Ipynb.DisplayData
       { displayData = displayData,
         displayMetadata
       }
 embedOutput (Nbparts.ExecuteResult executeCount unembeddedExecuteData executeMetadata) = do
-  executeData <- embedMimeBundle unembeddedExecuteData
+  executeData <- Nbparts.embedMimeBundle unembeddedExecuteData
   return
     Ipynb.ExecuteResult
       { executeCount,
@@ -61,13 +53,3 @@ embedOutput (Nbparts.ExecuteResult executeCount unembeddedExecuteData executeMet
         executeMetadata
       }
 embedOutput (Nbparts.Err errName errValue errTraceback) = pure $ Ipynb.Err {errName, errValue, errTraceback}
-
-embedMimeBundle :: Nbparts.UnembeddedMimeBundle -> IO Ipynb.MimeBundle
-embedMimeBundle unembeddedMimeBundle = Ipynb.MimeBundle <$> traverse embedMimeData unembeddedMimeBundle
-
-embedMimeData :: Nbparts.UnembeddedMimeData -> IO Ipynb.MimeData
-embedMimeData (Nbparts.BinaryData path) = do
-  bytes <- ByteString.readFile path
-  return $ Ipynb.BinaryData bytes
-embedMimeData (Nbparts.TextualData text) = pure $ Ipynb.TextualData text
-embedMimeData (Nbparts.JsonData value) = pure $ Ipynb.JsonData value
