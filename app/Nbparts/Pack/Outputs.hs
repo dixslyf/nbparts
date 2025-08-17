@@ -1,7 +1,7 @@
 module Nbparts.Pack.Outputs where
 
-import Control.Monad.Except (ExceptT (..), runExceptT)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Error.Class (MonadError, liftEither)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Ipynb (Output (..))
 import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
@@ -9,10 +9,15 @@ import Nbparts.Pack.Error qualified as Nbparts
 import Nbparts.Pack.Mime qualified as Nbparts
 import Nbparts.Types qualified as Nbparts
 
-fillOutputs :: FilePath -> Nbparts.UnembeddedOutputs -> Ipynb.Notebook a -> IO (Either Nbparts.PackError (Ipynb.Notebook a))
-fillOutputs prefixDir unembeddedOutputs (Ipynb.Notebook meta format cells) = runExceptT $ do
+fillOutputs ::
+  (MonadError Nbparts.PackError m, MonadIO m) =>
+  FilePath ->
+  Nbparts.UnembeddedOutputs ->
+  Ipynb.Notebook a ->
+  m (Ipynb.Notebook a)
+fillOutputs prefixDir unembeddedOutputs (Ipynb.Notebook meta format cells) = do
   outputs <- liftIO $ (embedOutputs . adjustOutputsPaths prefixDir) unembeddedOutputs
-  filledCells <- (ExceptT . pure) $ traverse (fillCellOutputs outputs) cells
+  filledCells <- liftEither $ traverse (fillCellOutputs outputs) cells
   return $ Ipynb.Notebook meta format filledCells
 
 fillCellOutputs :: Nbparts.Outputs a -> Ipynb.Cell a -> Either Nbparts.PackError (Ipynb.Cell a)

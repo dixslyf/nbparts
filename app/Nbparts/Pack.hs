@@ -1,8 +1,8 @@
 module Nbparts.Pack where
 
 import Control.Arrow (left)
-import Control.Monad.Except (ExceptT (ExceptT), runExceptT, throwError)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Error.Class (MonadError (throwError), liftEither)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty (Config (..))
 import Data.Aeson.Encode.Pretty qualified as AesonPretty
@@ -20,27 +20,23 @@ import Nbparts.Types qualified as Nbparts
 import System.FilePath ((</>))
 import System.FilePath qualified as FilePath
 
-pack :: FilePath -> Maybe FilePath -> IO (Either PackError ())
-pack nbpartsDir maybeOutputPath = runExceptT $ do
+pack :: (MonadError PackError m, MonadIO m) => FilePath -> Maybe FilePath -> m ()
+pack nbpartsDir maybeOutputPath = do
   -- `nbpartsDir` should be in the form "some_notebook.ipynb.nbparts".
   let fallbackOutputPath = FilePath.dropExtension nbpartsDir
   let outputPath = Maybe.fromMaybe fallbackOutputPath maybeOutputPath
 
-  -- Read sources.
-  let sourcesPath = nbpartsDir </> "sources.yaml"
-  (sources :: [Nbparts.Source]) <- ExceptT (left Nbparts.PackParseSourcesError <$> Yaml.decodeFileEither sourcesPath)
-
-  -- Read metadata.
-  -- TODO: Don't fail if file is missing — just warn.
+  -- Read metadata, sources and outputs.
+  -- TODO: Don't fail if metadata and outputs are missing — just warn.
   let metadataPath = nbpartsDir </> "metadata.yaml"
-  (metadata :: Nbparts.Metadata) <- ExceptT (left Nbparts.PackParseMetadataError <$> Yaml.decodeFileEither metadataPath)
-
-  -- Read outputs.
+  let sourcesPath = nbpartsDir </> "sources.yaml"
   let outputsPath = nbpartsDir </> "outputs.yaml"
-  (unembeddedOutputs :: Nbparts.UnembeddedOutputs) <- ExceptT (left Nbparts.PackParseOutputsError <$> Yaml.decodeFileEither outputsPath)
+  (sources :: [Nbparts.Source]) <- liftEither =<< liftIO (left Nbparts.PackParseSourcesError <$> Yaml.decodeFileEither sourcesPath)
+  (metadata :: Nbparts.Metadata) <- liftEither =<< liftIO (left Nbparts.PackParseMetadataError <$> Yaml.decodeFileEither metadataPath)
+  (unembeddedOutputs :: Nbparts.UnembeddedOutputs) <- liftEither =<< liftIO (left Nbparts.PackParseOutputsError <$> Yaml.decodeFileEither outputsPath)
 
   -- Create and export the notebook.
-  let processNb :: (Aeson.ToJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> ExceptT PackError IO ()
+  let processNb :: (MonadError PackError m, MonadIO m, Aeson.ToJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> m ()
       processNb nb = do
         filledNb <- fillNotebook nbpartsDir sources metadata unembeddedOutputs nb
         liftIO $ exportNotebook outputPath filledNb
@@ -52,16 +48,17 @@ pack nbpartsDir maybeOutputPath = runExceptT $ do
     _ -> throwError $ Nbparts.PackUnsupportedNotebookFormat (major, minor)
 
 fillNotebook ::
+  (MonadError PackError m, MonadIO m) =>
   FilePath ->
   [Nbparts.Source] ->
   Nbparts.Metadata ->
   Nbparts.UnembeddedOutputs ->
   Ipynb.Notebook a ->
-  ExceptT PackError IO (Ipynb.Notebook a)
+  m (Ipynb.Notebook a)
 fillNotebook nbpartsDir sources metadata unembeddedOutputs nb = do
   nbWithSources <- liftIO $ Nbparts.fillSources nbpartsDir nb sources
-  nbWithSourcesAndMeta <- ExceptT $ pure $ Nbparts.fillMetadata nbWithSources metadata
-  ExceptT $ Nbparts.fillOutputs nbpartsDir unembeddedOutputs nbWithSourcesAndMeta
+  nbWithSourcesAndMeta <- liftEither $ Nbparts.fillMetadata nbWithSources metadata
+  Nbparts.fillOutputs nbpartsDir unembeddedOutputs nbWithSourcesAndMeta
 
 prettyConfig :: AesonPretty.Config
 prettyConfig = AesonPretty.defConfig {confIndent = AesonPretty.Spaces 1}

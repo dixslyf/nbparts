@@ -4,6 +4,7 @@ module Main where
 
 import Control.Arrow (left)
 import Control.Exception qualified as Exception
+import Control.Monad.Except (runExceptT)
 import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
@@ -62,8 +63,8 @@ main = do
   opts <- parseOpts
 
   result <- case command opts of
-    Unpack (UnpackOptions notebook) -> left UnpackError <$> Nbparts.unpack notebook
-    Pack (PackOptions nbpartsDir outputPath) -> left PackError <$> Nbparts.pack nbpartsDir outputPath
+    Unpack (UnpackOptions notebook) -> left UnpackError <$> runExceptT (Nbparts.unpack notebook)
+    Pack (PackOptions nbpartsDir outputPath) -> left PackError <$> runExceptT (Nbparts.pack nbpartsDir outputPath)
 
   case result of
     Right _ -> pure ()

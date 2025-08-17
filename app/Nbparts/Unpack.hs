@@ -2,8 +2,8 @@
 
 module Nbparts.Unpack where
 
-import Control.Monad.Except (ExceptT (..), runExceptT)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Error.Class (MonadError (throwError), liftEither)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson qualified as Aeson
 import Data.ByteString (ByteString)
 import Data.Ipynb qualified as Ipynb
@@ -24,54 +24,52 @@ import Text.Libyaml qualified as Libyaml
 recommendedNotebookFormat :: (Int, Int)
 recommendedNotebookFormat = (4, 5)
 
-unpack :: FilePath -> IO (Either UnpackError ())
-unpack notebookPath = runExceptT $ do
+unpack :: (MonadError UnpackError m, MonadIO m) => FilePath -> m ()
+unpack notebookPath = do
   notebookContents <- liftIO $ TIO.readFile notebookPath
 
   let exportDirectory = notebookPath <.> "nbparts"
-
   let sourceMediaSubdir = "media"
-  liftIO $ Directory.createDirectoryIfMissing True (exportDirectory </> sourceMediaSubdir)
-
-  liftIO $ Directory.createDirectoryIfMissing True exportDirectory
-
   let outputMediaSubdir = "outputs-media"
-  liftIO $ Directory.createDirectoryIfMissing True (exportDirectory </> outputMediaSubdir)
+  liftIO $ do
+    Directory.createDirectoryIfMissing True (exportDirectory </> sourceMediaSubdir)
+    Directory.createDirectoryIfMissing True exportDirectory
+    Directory.createDirectoryIfMissing True (exportDirectory </> outputMediaSubdir)
 
   -- Collect and export metadata and outputs.
-  let processNb :: Ipynb.Notebook a -> ExceptT UnpackError IO (Nbparts.Metadata, Nbparts.UnembeddedOutputs, [Nbparts.Source])
+  let processNb :: (MonadError UnpackError m, MonadIO m) => Ipynb.Notebook a -> m (Nbparts.Metadata, [Nbparts.Source], Nbparts.UnembeddedOutputs)
       processNb nb = do
-        meta <- ExceptT $ pure $ Nbparts.collectMetadata nb
-        outputs <- ExceptT $ pure $ Nbparts.collectOutputs nb
+        meta <- liftEither $ Nbparts.collectMetadata nb
+        sources <- Nbparts.collectSources exportDirectory sourceMediaSubdir nb
+        outputs <- liftEither $ Nbparts.collectOutputs nb
         unembeddedOutputs <- liftIO $ Nbparts.unembedOutputs exportDirectory outputMediaSubdir outputs
-        sources <- ExceptT $ liftIO $ Nbparts.collectSources exportDirectory sourceMediaSubdir nb
-        return (meta, unembeddedOutputs, sources)
+        return (meta, sources, unembeddedOutputs)
 
   let notebookBytes = TE.encodeUtf8 notebookContents
-  (metadata, outputs, sources) <-
-    decodeNotebookThen
-      processNb
-      (ExceptT . pure . Left)
-      notebookBytes
-
-  let metadataPath = exportDirectory </> "metadata.yaml"
-  liftIO $ Yaml.encodeFile metadataPath metadata
+  (metadata, sources, outputs) <- decodeNotebookThen processNb notebookBytes
 
   let yamlOptions = Yaml.setStringStyle nbpartsYamlStringStyle Yaml.defaultEncodeOptions
-  let outputsPath = exportDirectory </> "outputs.yaml"
-  liftIO $ Yaml.encodeFileWith yamlOptions outputsPath outputs
-
+  let metadataPath = exportDirectory </> "metadata.yaml"
   let sourcesPath = exportDirectory </> "sources.yaml"
-  liftIO $ Yaml.encodeFileWith yamlOptions sourcesPath sources
+  let outputsPath = exportDirectory </> "outputs.yaml"
 
-decodeNotebookThen :: (forall a. (Aeson.ToJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> b) -> (UnpackError -> b) -> ByteString -> b
-decodeNotebookThen onSuccess onError bytes =
+  liftIO $ do
+    Yaml.encodeFile metadataPath metadata
+    Yaml.encodeFileWith yamlOptions sourcesPath sources
+    Yaml.encodeFileWith yamlOptions outputsPath outputs
+
+decodeNotebookThen ::
+  (MonadError UnpackError m) =>
+  (forall a. (Aeson.ToJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> m b) ->
+  ByteString ->
+  m b
+decodeNotebookThen onSuccess bytes =
   case Aeson.eitherDecodeStrict bytes of
     Right (nb :: Ipynb.Notebook Ipynb.NbV4) -> onSuccess nb
     Left _ ->
       case Aeson.eitherDecodeStrict bytes of
         Right (nb :: Ipynb.Notebook Ipynb.NbV3) -> onSuccess nb
-        Left message -> onError (Nbparts.UnpackJSONDecodeError (T.pack message))
+        Left message -> throwError $ Nbparts.UnpackJSONDecodeError (T.pack message)
 
 hasOnlyOneNewline :: T.Text -> Bool
 hasOnlyOneNewline text = T.length (T.filter (== '\n') text) == 1
