@@ -60,7 +60,7 @@ unpack notebookPath = do
   let outputsPath = exportDirectory </> "outputs.yaml"
 
   let lang = Maybe.fromMaybe "" $ extractLanguage metadata
-  let markdownText = Nbparts.sourcesToMarkdown lang sources
+  markdownText <- liftEither $ Nbparts.sourcesToMarkdown lang sources
 
   liftIO $ do
     Yaml.encodeFile metadataPath metadata

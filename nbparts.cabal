@@ -49,6 +49,7 @@ executable nbparts
         yaml ^>=0.11.11.2,
         libyaml ^>=0.1.4,
         crypton ^>=1.0.4,
-        mime-types ^>= 0.1.2.0
+        mime-types ^>= 0.1.2.0,
+        cmark-gfm ^>=0.2.6
     hs-source-dirs: app
     default-language: GHC2021

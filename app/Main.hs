@@ -84,6 +84,12 @@ renderError err = case err of
       <> "."
       <> T.show (snd Nbparts.recommendedNotebookFormat)
       <> "."
+  UnpackError (Nbparts.UnpackMissingCellAttachmentError cellId attachmentName) ->
+    "Could not find attachment \""
+      <> attachmentName
+      <> "\" for cell \""
+      <> cellId
+      <> "\""
   PackError (Nbparts.PackUnsupportedNotebookFormat (major, minor)) -> "Unsupported notebook format: " <> Text.show major <> "." <> Text.show minor
   PackError (Nbparts.PackParseSourcesError parseErr) -> "Failed to parse sources: " <> T.pack (Exception.displayException parseErr)
   PackError (Nbparts.PackParseMetadataError parseErr) -> "Failed to parse metadata: " <> T.pack (Exception.displayException parseErr)
