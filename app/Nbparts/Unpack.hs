@@ -5,11 +5,15 @@ module Nbparts.Unpack where
 import Control.Monad.Error.Class (MonadError (throwError), liftEither)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson qualified as Aeson
+import Data.Aeson.KeyMap qualified as Aeson.KeyMap
 import Data.ByteString (ByteString)
 import Data.Ipynb qualified as Ipynb
+import Data.Map qualified as Map
+import Data.Maybe qualified as Maybe
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import Data.Text.IO qualified as Text
 import Data.Yaml qualified as Yaml
 import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack.Error (UnpackError)
@@ -17,6 +21,7 @@ import Nbparts.Unpack.Error qualified as Nbparts
 import Nbparts.Unpack.Metadata qualified as Nbparts
 import Nbparts.Unpack.Outputs qualified as Nbparts
 import Nbparts.Unpack.Sources qualified as Nbparts
+import Nbparts.Unpack.Sources.Markdown qualified as Nbparts
 import System.Directory qualified as Directory
 import System.FilePath ((<.>), (</>))
 import Text.Libyaml qualified as Libyaml
@@ -51,12 +56,17 @@ unpack notebookPath = do
   let yamlOptions = Yaml.setStringStyle nbpartsYamlStringStyle Yaml.defaultEncodeOptions
   let metadataPath = exportDirectory </> "metadata.yaml"
   let sourcesPath = exportDirectory </> "sources.yaml"
+  let sourcesMdPath = exportDirectory </> "sources.md"
   let outputsPath = exportDirectory </> "outputs.yaml"
+
+  let lang = Maybe.fromMaybe "" $ extractLanguage metadata
+  let markdownText = Nbparts.sourcesToMarkdown lang sources
 
   liftIO $ do
     Yaml.encodeFile metadataPath metadata
     Yaml.encodeFileWith yamlOptions sourcesPath sources
     Yaml.encodeFileWith yamlOptions outputsPath outputs
+    Text.writeFile sourcesMdPath markdownText
 
 decodeNotebookThen ::
   (MonadError UnpackError m) =>
@@ -84,3 +94,14 @@ nbpartsYamlStringStyle s
   | "\n" `T.isInfixOf` s = (Libyaml.NoTag, Libyaml.Literal)
   | Yaml.isSpecialString s = (Libyaml.NoTag, Libyaml.SingleQuoted)
   | otherwise = (Libyaml.NoTag, Libyaml.PlainNoTag)
+
+extractLanguage :: Nbparts.Metadata -> Maybe T.Text
+extractLanguage (Nbparts.Metadata _ _ (Ipynb.JSONMeta nbMeta) _) = do
+  kernelspec <- Map.lookup "kernelspec" nbMeta
+  langFromKernelSpec kernelspec
+
+langFromKernelSpec :: Aeson.Value -> Maybe T.Text
+langFromKernelSpec (Aeson.Object obj) = case Aeson.KeyMap.lookup "language" obj of
+  Just (Aeson.String lang) -> Just lang
+  _ -> Nothing
+langFromKernelSpec _ = Nothing
