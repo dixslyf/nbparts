@@ -33,7 +33,7 @@ recommendedNotebookFormat = (4, 5)
 
 data UnpackOptions = UnpackOptions
   { notebook :: FilePath,
-    sourceFormat :: NbpartsFormat
+    sourcesFormat :: NbpartsFormat
   }
 
 unpack :: (MonadError UnpackError m, MonadIO m) => UnpackOptions -> m ()
@@ -48,19 +48,23 @@ unpack (UnpackOptions notebookPath sourcesFormat) = do
     Directory.createDirectoryIfMissing True exportDirectory
     Directory.createDirectoryIfMissing True (exportDirectory </> outputMediaSubdir)
 
-  -- Collect and export metadata, sources and outputs.
+  -- Parse the notebook.
   let notebookBytes = TE.encodeUtf8 notebookContents
   (nb :: Nbparts.SomeNotebook) <-
     liftEither $
       left (Nbparts.UnpackJSONDecodeError . T.pack) $
         Aeson.eitherDecodeStrict notebookBytes
 
+  -- Collect sources, metadata and outputs.
+  let manifest = Nbparts.mkNbpartsManifest sourcesFormat
   let withNb = Nbparts.withSomeNotebook nb
   metadata <- liftEither $ withNb Nbparts.collectMetadata
   sources <- withNb (Nbparts.collectSources exportDirectory sourceMediaSubdir)
   outputs <- withNb (liftEither . Nbparts.collectOutputs >=> liftIO . Nbparts.unembedOutputs exportDirectory outputMediaSubdir)
 
+  -- Export manifest, sources, metadata and outputs.
   let yamlOptions = Yaml.setStringStyle nbpartsYamlStringStyle Yaml.defaultEncodeOptions
+  let manifestPath = exportDirectory </> "nbparts.yaml"
   let metadataPath = exportDirectory </> "metadata.yaml"
   let outputsPath = exportDirectory </> "outputs.yaml"
   let sourcesPath =
@@ -71,6 +75,7 @@ unpack (UnpackOptions notebookPath sourcesFormat) = do
               )
 
   liftIO $ do
+    Yaml.encodeFile manifestPath manifest
     Yaml.encodeFile metadataPath metadata
     Yaml.encodeFileWith yamlOptions sourcesPath sources
 

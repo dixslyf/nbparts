@@ -32,7 +32,10 @@ executable nbparts
         Nbparts.Pack.Outputs,
         Nbparts.Pack.Metadata,
         Nbparts.Pack.Mime,
-        Nbparts.Pack.Error
+        Nbparts.Pack.Error,
+        Paths_nbparts
+    autogen-modules: 
+        Paths_nbparts
     -- other-extensions:
     build-depends:
         directory ^>=1.3.8.5,
