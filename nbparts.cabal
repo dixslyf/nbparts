@@ -29,6 +29,7 @@ executable nbparts
         Nbparts.Unpack.Error,
         Nbparts.Pack,
         Nbparts.Pack.Sources,
+        Nbparts.Pack.Sources.Markdown,
         Nbparts.Pack.Outputs,
         Nbparts.Pack.Metadata,
         Nbparts.Pack.Mime,
@@ -53,6 +54,7 @@ executable nbparts
         libyaml ^>=0.1.4,
         crypton ^>=1.0.4,
         mime-types ^>= 0.1.2.0,
-        cmark-gfm ^>=0.2.6
+        cmark-gfm ^>=0.2.6,
+        megaparsec ^>=9.7.0
     hs-source-dirs: app
     default-language: GHC2021

@@ -11,12 +11,14 @@ import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
+import Data.Text.IO qualified as Text
 import Data.Yaml qualified as Yaml
 import Nbparts.Pack.Error (PackError)
 import Nbparts.Pack.Error qualified as Nbparts
 import Nbparts.Pack.Metadata qualified as Nbparts
 import Nbparts.Pack.Outputs qualified as Nbparts
 import Nbparts.Pack.Sources qualified as Nbparts
+import Nbparts.Pack.Sources.Markdown qualified as Nbparts
 import Nbparts.Types (NbpartsManifest (NbpartsManifest))
 import Nbparts.Types qualified as Nbparts
 import System.FilePath ((</>))
@@ -38,10 +40,14 @@ pack (PackOptions nbpartsDir maybeOutputPath) = do
   (NbpartsManifest _nbpartsVersion sourcesFormat) <- liftEither =<< liftIO (left Nbparts.PackParseManifestError <$> Yaml.decodeFileEither manifestPath)
 
   -- TODO: Don't fail if metadata and outputs are missing — just warn.
-  let sourcesPath = nbpartsDir </> "sources.yaml"
   (sources :: [Nbparts.Source]) <- case sourcesFormat of
-    Nbparts.FormatYaml -> liftEither =<< liftIO (left Nbparts.PackParseSourcesError <$> Yaml.decodeFileEither sourcesPath)
-    Nbparts.FormatMarkdown -> undefined -- FIXME: not yet implemented
+    Nbparts.FormatYaml -> do
+      let sourcesPath = nbpartsDir </> "sources.yaml"
+      liftEither =<< liftIO (left Nbparts.PackParseYamlSourcesError <$> Yaml.decodeFileEither sourcesPath)
+    Nbparts.FormatMarkdown -> do
+      let sourcesPath = nbpartsDir </> "sources.md"
+      mdText <- liftIO $ Text.readFile sourcesPath
+      liftEither $ Nbparts.markdownToSources sourcesPath mdText
 
   let metadataPath = nbpartsDir </> "metadata.yaml"
   let outputsPath = nbpartsDir </> "outputs.yaml"

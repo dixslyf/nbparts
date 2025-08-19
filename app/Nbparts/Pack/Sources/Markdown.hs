@@ -1,0 +1,84 @@
+{-# LANGUAGE OverloadedStrings #-}
+
+module Nbparts.Pack.Sources.Markdown where
+
+import Control.Applicative (Alternative ((<|>)))
+import Control.Arrow (left)
+import Control.Monad qualified as Monad
+import Data.Aeson qualified as Aeson
+import Data.Maybe qualified as Maybe
+import Data.Text (Text)
+import Data.Text qualified as Text
+import Data.Text.Encoding qualified as Text
+import Nbparts.Pack.Error qualified as Nbparts
+import Nbparts.Types qualified as Nbparts
+import Nbparts.Unpack.Sources.Markdown qualified as Nbparts
+import Text.Megaparsec (Parsec)
+import Text.Megaparsec qualified as P
+import Text.Megaparsec.Char qualified as P
+
+type Parser = Parsec Nbparts.ParseMarkdownSourcesError Text
+
+markdownToSources :: String -> Text -> Either Nbparts.PackError [Nbparts.Source]
+markdownToSources filename mdText = left Nbparts.PackParseMarkdownSourcesError $ P.runParser parseSources filename mdText
+
+parseSources :: Parser [Nbparts.Source]
+parseSources = P.many parseSource
+
+parseSource :: Parser Nbparts.Source
+parseSource = do
+  (Nbparts.CellInfo cellId cellType maybeAttachmentUrls) <- parseCellInfo
+  let attachments = do
+        (Nbparts.CellAttachmentUrls attachmentUrls) <- maybeAttachmentUrls
+        Nothing -- TODO: Need to do IO to load the attachments.
+
+  -- Try removing the newline added after the <!-- nbparts:cell ... --> comment.
+  Monad.void $ P.optional P.newline
+
+  srcText <- case cellType of
+    Nbparts.Code -> do
+      code <- parseCodeBlock
+      -- During unpacking, we appended two newlines to the end of the cell content for prettier output,
+      -- so, now, we remove the newlines.
+      Monad.void $ P.optional (P.newline >> P.newline)
+      pure code
+    _ -> do
+      body <- Text.pack <$> P.manyTill P.anySingle (P.lookAhead (Monad.void parseCellInfo <|> P.eof))
+      -- Again, removing the trailing two newlines. Since parsing non-code blocks only stops
+      -- when encountering the <!-- nbparts:cell ... --> comment, the parsed text contains the
+      -- newlines, so we have to remove them using plain text functions instead of Megaparsec.
+      let stripped = Maybe.fromMaybe body $ Text.stripSuffix "\n\n" body
+      pure stripped
+
+  let src = splitKeepNewlines srcText
+  pure (Nbparts.Source cellType cellId src attachments)
+
+parseCodeBlock :: Parser Text
+parseCodeBlock = do
+  Monad.void $ P.string "```"
+  Monad.void $ P.manyTill P.anySingle P.newline -- Ignore the language identifier.
+  code <- Text.pack <$> P.manyTill P.anySingle (P.string "```")
+
+  -- We appended a newline when unpacking, so remove it.
+  let stripped = Maybe.fromMaybe code $ Text.stripSuffix "\n" code
+  pure stripped
+
+parseCellInfo :: Parser Nbparts.CellInfo
+parseCellInfo = do
+  Monad.void $ P.string "<!--"
+  P.space
+  Monad.void $ P.string "nbparts:cell"
+  P.space1
+  json <- P.manyTill P.anySingle (P.string "-->")
+  case Aeson.eitherDecodeStrict (Text.encodeUtf8 (Text.pack json)) of
+    Right cellInfo -> pure cellInfo
+    Left err -> P.customFailure (Nbparts.ParseMarkdownSourcesJsonError $ Text.pack err)
+
+splitKeepNewlines :: Text -> [Text]
+splitKeepNewlines txt
+  | Text.null txt = []
+  | otherwise =
+      let (before, rest) = Text.break (== '\n') txt
+       in case Text.uncons rest of
+            Just ('\n', rest') -> (before `Text.snoc` '\n') : splitKeepNewlines rest'
+            _ -> [before]

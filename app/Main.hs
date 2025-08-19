@@ -19,6 +19,7 @@ import Nbparts.Unpack.Error qualified as Nbparts
 import Options.Applicative qualified as OA
 import System.Exit (ExitCode (ExitFailure), exitWith)
 import System.IO (stderr)
+import Text.Megaparsec qualified as Megaparsec
 
 newtype AppOptions = AppOptions
   { command :: Command
@@ -102,7 +103,8 @@ renderError err = case err of
       <> "\""
   PackError (Nbparts.PackUnsupportedNotebookFormat (major, minor)) -> "Unsupported notebook format: " <> Text.show major <> "." <> Text.show minor
   PackError (Nbparts.PackParseManifestError parseErr) -> "Failed to parse manifest: " <> T.pack (Exception.displayException parseErr)
-  PackError (Nbparts.PackParseSourcesError parseErr) -> "Failed to parse sources: " <> T.pack (Exception.displayException parseErr)
+  PackError (Nbparts.PackParseYamlSourcesError parseErr) -> "Failed to parse sources: " <> T.pack (Exception.displayException parseErr)
+  PackError (Nbparts.PackParseMarkdownSourcesError errBundle) -> Text.pack $ Megaparsec.errorBundlePretty errBundle
   PackError (Nbparts.PackParseMetadataError parseErr) -> "Failed to parse metadata: " <> T.pack (Exception.displayException parseErr)
   PackError (Nbparts.PackParseOutputsError parseErr) -> "Failed to parse outputs: " <> T.pack (Exception.displayException parseErr)
   PackError Nbparts.PackMissingCellIdError -> "Markdown content contains missing cell ID"
