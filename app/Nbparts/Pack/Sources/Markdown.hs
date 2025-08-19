@@ -12,9 +12,11 @@ import Data.Maybe qualified as Maybe
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
+import Data.Tuple qualified as Tuple
 import Nbparts.Pack.Error qualified as Nbparts
 import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack.Sources.Markdown qualified as Nbparts
+import Network.Mime qualified as Mime
 import Text.Megaparsec (Parsec)
 import Text.Megaparsec qualified as P
 import Text.Megaparsec.Char qualified as P
@@ -44,11 +46,18 @@ parseSource = do
     Nbparts.Markdown -> fixAttachments maybeAttachmentUrls <$> parseOtherBlock
     _ -> parseOtherBlock
 
+  let src = splitKeepNewlines srcText
+
   let attachments = do
         (Nbparts.CellAttachmentUrls attachmentUrls) <- maybeAttachmentUrls
-        Nothing -- TODO: Need to do IO to load the attachments.
-  let src = splitKeepNewlines srcText
-  pure (Nbparts.Source cellType cellId src attachments)
+        -- Remove the "attachment:" prefix from attachment URLs to get the original attachment names.
+        let attachmentNames = Map.map (\url -> Maybe.fromMaybe url $ Text.stripPrefix "attachment:" url) attachmentUrls
+        -- We shouldn't have any duplicate keys since the mapping should be one-to-one.
+        -- This is now a mapping from the original attachment names to their corresponding media file paths.
+        let reversed = Map.fromList $ map Tuple.swap (Map.toList attachmentNames)
+        pure $ Nbparts.UnembeddedMimeAttachments (Map.map mediaPathToMimeBundle reversed)
+
+  pure $ Nbparts.Source cellType cellId src attachments
 
 parseCodeBlock :: Parser Text
 parseCodeBlock = do
@@ -116,3 +125,10 @@ collectAttachmentFixes
             fixedImageNodeText = Text.strip $ CMarkGFM.nodeToCommonmark [] Nothing fixedImageNode
          in [(posInfo, fixedImageNodeText)]
 collectAttachmentFixes attachments (CMarkGFM.Node _ _ children) = foldMap (collectAttachmentFixes attachments) children
+
+-- TODO: Should the mime bundle really be a singleton? Is it possible for there to be multiple entries?
+mediaPathToMimeBundle :: Text -> Nbparts.UnembeddedMimeBundle
+mediaPathToMimeBundle fp =
+  Map.singleton
+    (Text.decodeUtf8 $ Mime.defaultMimeLookup fp)
+    $ Nbparts.BinaryData (Text.unpack fp)
