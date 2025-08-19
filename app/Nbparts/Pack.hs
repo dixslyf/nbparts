@@ -17,6 +17,7 @@ import Nbparts.Pack.Error qualified as Nbparts
 import Nbparts.Pack.Metadata qualified as Nbparts
 import Nbparts.Pack.Outputs qualified as Nbparts
 import Nbparts.Pack.Sources qualified as Nbparts
+import Nbparts.Types (NbpartsManifest (NbpartsManifest))
 import Nbparts.Types qualified as Nbparts
 import System.FilePath ((</>))
 import System.FilePath qualified as FilePath
@@ -32,12 +33,18 @@ pack (PackOptions nbpartsDir maybeOutputPath) = do
   let fallbackOutputPath = FilePath.dropExtension nbpartsDir
   let outputPath = Maybe.fromMaybe fallbackOutputPath maybeOutputPath
 
-  -- Read metadata, sources and outputs.
+  -- Read manifest, metadata, sources and outputs.
+  let manifestPath = nbpartsDir </> "nbparts.yaml"
+  (NbpartsManifest _nbpartsVersion sourcesFormat) <- liftEither =<< liftIO (left Nbparts.PackParseManifestError <$> Yaml.decodeFileEither manifestPath)
+
   -- TODO: Don't fail if metadata and outputs are missing — just warn.
-  let metadataPath = nbpartsDir </> "metadata.yaml"
   let sourcesPath = nbpartsDir </> "sources.yaml"
+  (sources :: [Nbparts.Source]) <- case sourcesFormat of
+    Nbparts.FormatYaml -> liftEither =<< liftIO (left Nbparts.PackParseSourcesError <$> Yaml.decodeFileEither sourcesPath)
+    Nbparts.FormatMarkdown -> undefined -- FIXME: not yet implemented
+
+  let metadataPath = nbpartsDir </> "metadata.yaml"
   let outputsPath = nbpartsDir </> "outputs.yaml"
-  (sources :: [Nbparts.Source]) <- liftEither =<< liftIO (left Nbparts.PackParseSourcesError <$> Yaml.decodeFileEither sourcesPath)
   (metadata :: Nbparts.Metadata) <- liftEither =<< liftIO (left Nbparts.PackParseMetadataError <$> Yaml.decodeFileEither metadataPath)
   (unembeddedOutputs :: Nbparts.UnembeddedOutputs) <- liftEither =<< liftIO (left Nbparts.PackParseOutputsError <$> Yaml.decodeFileEither outputsPath)
 

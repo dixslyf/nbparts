@@ -6,6 +6,7 @@ import Nbparts.Types qualified as Nbparts
 
 data PackError
   = PackUnsupportedNotebookFormat (Int, Int)
+  | PackParseManifestError Yaml.ParseException
   | PackParseSourcesError Yaml.ParseException
   | PackParseMetadataError Yaml.ParseException
   | PackParseOutputsError Yaml.ParseException
