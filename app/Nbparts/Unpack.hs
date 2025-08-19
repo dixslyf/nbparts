@@ -77,10 +77,10 @@ unpack (UnpackOptions notebookPath sourcesFormat) = do
   liftIO $ do
     Yaml.encodeFile manifestPath manifest
     Yaml.encodeFile metadataPath metadata
-    Yaml.encodeFileWith yamlOptions sourcesPath sources
+    Yaml.encodeFileWith yamlOptions outputsPath outputs
 
   case sourcesFormat of
-    Nbparts.FormatYaml -> liftIO $ Yaml.encodeFileWith yamlOptions outputsPath outputs
+    Nbparts.FormatYaml -> liftIO $ Yaml.encodeFileWith yamlOptions sourcesPath sources
     Nbparts.FormatMarkdown -> do
       let lang = Maybe.fromMaybe "" $ extractLanguage metadata
       markdownText <- liftEither $ Nbparts.sourcesToMarkdown lang sources
