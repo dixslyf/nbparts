@@ -2,10 +2,12 @@
 
 module Nbparts.Pack.Sources.Markdown where
 
+import CMarkGFM qualified
 import Control.Applicative (Alternative ((<|>)))
 import Control.Arrow (left)
 import Control.Monad qualified as Monad
 import Data.Aeson qualified as Aeson
+import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -28,9 +30,6 @@ parseSources = P.many parseSource
 parseSource :: Parser Nbparts.Source
 parseSource = do
   (Nbparts.CellInfo cellId cellType maybeAttachmentUrls) <- parseCellInfo
-  let attachments = do
-        (Nbparts.CellAttachmentUrls attachmentUrls) <- maybeAttachmentUrls
-        Nothing -- TODO: Need to do IO to load the attachments.
 
   -- Try removing the newline added after the <!-- nbparts:cell ... --> comment.
   Monad.void $ P.optional P.newline
@@ -42,14 +41,12 @@ parseSource = do
       -- so, now, we remove the newlines.
       Monad.void $ P.optional (P.newline >> P.newline)
       pure code
-    _ -> do
-      body <- Text.pack <$> P.manyTill P.anySingle (P.lookAhead (Monad.void parseCellInfo <|> P.eof))
-      -- Again, removing the trailing two newlines. Since parsing non-code blocks only stops
-      -- when encountering the <!-- nbparts:cell ... --> comment, the parsed text contains the
-      -- newlines, so we have to remove them using plain text functions instead of Megaparsec.
-      let stripped = Maybe.fromMaybe body $ Text.stripSuffix "\n\n" body
-      pure stripped
+    Nbparts.Markdown -> fixAttachments maybeAttachmentUrls <$> parseOtherBlock
+    _ -> parseOtherBlock
 
+  let attachments = do
+        (Nbparts.CellAttachmentUrls attachmentUrls) <- maybeAttachmentUrls
+        Nothing -- TODO: Need to do IO to load the attachments.
   let src = splitKeepNewlines srcText
   pure (Nbparts.Source cellType cellId src attachments)
 
@@ -62,6 +59,14 @@ parseCodeBlock = do
   -- We appended a newline when unpacking, so remove it.
   let stripped = Maybe.fromMaybe code $ Text.stripSuffix "\n" code
   pure stripped
+
+parseOtherBlock :: Parser Text
+parseOtherBlock = do
+  body <- Text.pack <$> P.manyTill P.anySingle (P.lookAhead (Monad.void parseCellInfo <|> P.eof))
+  -- Again, removing the trailing two newlines. Since parsing non-code blocks only stops
+  -- when encountering the <!-- nbparts:cell ... --> comment, the parsed text contains the
+  -- newlines, so we have to remove them using plain text functions instead of Megaparsec.
+  pure $ Maybe.fromMaybe body $ Text.stripSuffix "\n\n" body
 
 parseCellInfo :: Parser Nbparts.CellInfo
 parseCellInfo = do
@@ -82,3 +87,32 @@ splitKeepNewlines txt
        in case Text.uncons rest of
             Just ('\n', rest') -> (before `Text.snoc` '\n') : splitKeepNewlines rest'
             _ -> [before]
+
+fixAttachments :: Maybe Nbparts.CellAttachmentUrls -> Text -> Text
+fixAttachments maybeAttachmentUrls mdText = do
+  case maybeAttachmentUrls of
+    Just attachmentUrls ->
+      let mdTree = CMarkGFM.commonmarkToNode [CMarkGFM.optSourcePos] [] mdText
+          attachmentFixes = collectAttachmentFixes attachmentUrls mdTree
+       in Nbparts.applyAttachmentFixes attachmentFixes mdText
+    Nothing -> mdText
+
+collectAttachmentFixes ::
+  Nbparts.CellAttachmentUrls ->
+  CMarkGFM.Node ->
+  [(CMarkGFM.PosInfo, Text)]
+collectAttachmentFixes
+  (Nbparts.CellAttachmentUrls attachmentUrls)
+  (CMarkGFM.Node maybePosInfo (CMarkGFM.IMAGE url title) children)
+    | Maybe.isJust $ Map.lookup url attachmentUrls =
+        let -- Safety: The guard guarantees that the url is in the map.
+            originalUrl = Maybe.fromJust $ Map.lookup url attachmentUrls
+
+            -- Safety: We should have parsed with the CMarkGFM.optSourcePos extension,
+            -- so position information should be available.
+            posInfo = Maybe.fromJust maybePosInfo
+
+            fixedImageNode = CMarkGFM.Node Nothing (CMarkGFM.IMAGE originalUrl title) children
+            fixedImageNodeText = Text.strip $ CMarkGFM.nodeToCommonmark [] Nothing fixedImageNode
+         in [(posInfo, fixedImageNodeText)]
+collectAttachmentFixes attachments (CMarkGFM.Node _ _ children) = foldMap (collectAttachmentFixes attachments) children

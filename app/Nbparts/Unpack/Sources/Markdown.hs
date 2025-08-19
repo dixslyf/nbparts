@@ -89,6 +89,7 @@ escapeCellInfo = Text.replace "-->" "-\\->" . Text.replace "\\" "\\\\"
 unescapeCellInfo :: Text -> Text
 unescapeCellInfo = Text.replace "\\\\" "\\" . Text.replace "-\\->" "-->"
 
+-- TODO: Move `applyAttachmentFixes` to some utility module.
 applyAttachmentFixes :: [(CMarkGFM.PosInfo, Text)] -> Text -> Text
 applyAttachmentFixes attachmentFixes mdText =
   let mdLines = Text.lines mdText
