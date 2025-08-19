@@ -10,6 +10,8 @@ import Data.Map (Map)
 import Data.Text (Text)
 import GHC.Generics (Generic)
 
+data NbpartsFormat = FormatYaml | FormatMarkdown
+
 data SomeNotebook where
   SomeNotebook :: (Aeson.ToJSON (Ipynb.Notebook a), Aeson.FromJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> SomeNotebook
 

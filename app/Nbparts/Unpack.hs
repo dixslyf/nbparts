@@ -16,6 +16,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.Text.IO qualified as Text
 import Data.Yaml qualified as Yaml
+import Nbparts.Types (NbpartsFormat)
 import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack.Error (UnpackError)
 import Nbparts.Unpack.Error qualified as Nbparts
@@ -30,8 +31,13 @@ import Text.Libyaml qualified as Libyaml
 recommendedNotebookFormat :: (Int, Int)
 recommendedNotebookFormat = (4, 5)
 
-unpack :: (MonadError UnpackError m, MonadIO m) => FilePath -> m ()
-unpack notebookPath = do
+data UnpackOptions = UnpackOptions
+  { notebook :: FilePath,
+    sourceFormat :: NbpartsFormat
+  }
+
+unpack :: (MonadError UnpackError m, MonadIO m) => UnpackOptions -> m ()
+unpack (UnpackOptions notebookPath sourcesFormat) = do
   notebookContents <- liftIO $ TIO.readFile notebookPath
 
   let exportDirectory = notebookPath <.> "nbparts"
@@ -56,18 +62,24 @@ unpack notebookPath = do
 
   let yamlOptions = Yaml.setStringStyle nbpartsYamlStringStyle Yaml.defaultEncodeOptions
   let metadataPath = exportDirectory </> "metadata.yaml"
-  let sourcesPath = exportDirectory </> "sources.yaml"
-  let sourcesMdPath = exportDirectory </> "sources.md"
   let outputsPath = exportDirectory </> "outputs.yaml"
-
-  let lang = Maybe.fromMaybe "" $ extractLanguage metadata
-  markdownText <- liftEither $ Nbparts.sourcesToMarkdown lang sources
+  let sourcesPath =
+        exportDirectory
+          </> ( "sources" <> case sourcesFormat of
+                  Nbparts.FormatYaml -> ".yaml"
+                  Nbparts.FormatMarkdown -> ".md"
+              )
 
   liftIO $ do
     Yaml.encodeFile metadataPath metadata
     Yaml.encodeFileWith yamlOptions sourcesPath sources
-    Yaml.encodeFileWith yamlOptions outputsPath outputs
-    Text.writeFile sourcesMdPath markdownText
+
+  case sourcesFormat of
+    Nbparts.FormatYaml -> liftIO $ Yaml.encodeFileWith yamlOptions outputsPath outputs
+    Nbparts.FormatMarkdown -> do
+      let lang = Maybe.fromMaybe "" $ extractLanguage metadata
+      markdownText <- liftEither $ Nbparts.sourcesToMarkdown lang sources
+      liftIO $ Text.writeFile sourcesPath markdownText
 
 hasOnlyOneNewline :: T.Text -> Bool
 hasOnlyOneNewline text = T.length (T.filter (== '\n') text) == 1

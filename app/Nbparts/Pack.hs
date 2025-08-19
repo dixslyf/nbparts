@@ -21,8 +21,13 @@ import Nbparts.Types qualified as Nbparts
 import System.FilePath ((</>))
 import System.FilePath qualified as FilePath
 
-pack :: (MonadError PackError m, MonadIO m) => FilePath -> Maybe FilePath -> m ()
-pack nbpartsDir maybeOutputPath = do
+data PackOptions = PackOptions
+  { directory :: FilePath,
+    outputPath :: Maybe FilePath
+  }
+
+pack :: (MonadError PackError m, MonadIO m) => PackOptions -> m ()
+pack (PackOptions nbpartsDir maybeOutputPath) = do
   -- `nbpartsDir` should be in the form "some_notebook.ipynb.nbparts".
   let fallbackOutputPath = FilePath.dropExtension nbpartsDir
   let outputPath = Maybe.fromMaybe fallbackOutputPath maybeOutputPath
