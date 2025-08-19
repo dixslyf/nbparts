@@ -2,12 +2,30 @@
 
 module Nbparts.Types where
 
+import Control.Applicative (Alternative ((<|>)))
 import Data.Aeson (Options (..), SumEncoding (..))
 import Data.Aeson qualified as Aeson
 import Data.Ipynb qualified as Ipynb
 import Data.Map (Map)
 import Data.Text (Text)
 import GHC.Generics (Generic)
+
+data SomeNotebook where
+  SomeNotebook :: (Aeson.ToJSON (Ipynb.Notebook a), Aeson.FromJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> SomeNotebook
+
+instance Show SomeNotebook where
+  show (SomeNotebook nb) = "SomeNotebook (" <> show nb <> ")"
+
+instance Aeson.ToJSON SomeNotebook where
+  toJSON (SomeNotebook nb) = Aeson.toJSON nb
+
+instance Aeson.FromJSON SomeNotebook where
+  parseJSON v =
+    SomeNotebook <$> (Aeson.parseJSON @(Ipynb.Notebook Ipynb.NbV3)) v
+      <|> SomeNotebook <$> (Aeson.parseJSON @(Ipynb.Notebook Ipynb.NbV4)) v
+
+withSomeNotebook :: SomeNotebook -> (forall a. (Aeson.ToJSON (Ipynb.Notebook a), Aeson.FromJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> r) -> r
+withSomeNotebook (SomeNotebook nb) f = f nb
 
 data Source = Source
   { cellType :: CellType,

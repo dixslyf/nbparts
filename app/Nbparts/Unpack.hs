@@ -2,11 +2,12 @@
 
 module Nbparts.Unpack where
 
-import Control.Monad.Error.Class (MonadError (throwError), liftEither)
+import Control.Arrow (left)
+import Control.Monad ((>=>))
+import Control.Monad.Error.Class (MonadError, liftEither)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.KeyMap qualified as Aeson.KeyMap
-import Data.ByteString (ByteString)
 import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
@@ -41,17 +42,17 @@ unpack notebookPath = do
     Directory.createDirectoryIfMissing True exportDirectory
     Directory.createDirectoryIfMissing True (exportDirectory </> outputMediaSubdir)
 
-  -- Collect and export metadata and outputs.
-  let processNb :: (MonadError UnpackError m, MonadIO m) => Ipynb.Notebook a -> m (Nbparts.Metadata, [Nbparts.Source], Nbparts.UnembeddedOutputs)
-      processNb nb = do
-        meta <- liftEither $ Nbparts.collectMetadata nb
-        sources <- Nbparts.collectSources exportDirectory sourceMediaSubdir nb
-        outputs <- liftEither $ Nbparts.collectOutputs nb
-        unembeddedOutputs <- liftIO $ Nbparts.unembedOutputs exportDirectory outputMediaSubdir outputs
-        return (meta, sources, unembeddedOutputs)
-
+  -- Collect and export metadata, sources and outputs.
   let notebookBytes = TE.encodeUtf8 notebookContents
-  (metadata, sources, outputs) <- decodeNotebookThen processNb notebookBytes
+  (nb :: Nbparts.SomeNotebook) <-
+    liftEither $
+      left (Nbparts.UnpackJSONDecodeError . T.pack) $
+        Aeson.eitherDecodeStrict notebookBytes
+
+  let withNb = Nbparts.withSomeNotebook nb
+  metadata <- liftEither $ withNb Nbparts.collectMetadata
+  sources <- withNb (Nbparts.collectSources exportDirectory sourceMediaSubdir)
+  outputs <- withNb (liftEither . Nbparts.collectOutputs >=> liftIO . Nbparts.unembedOutputs exportDirectory outputMediaSubdir)
 
   let yamlOptions = Yaml.setStringStyle nbpartsYamlStringStyle Yaml.defaultEncodeOptions
   let metadataPath = exportDirectory </> "metadata.yaml"
@@ -67,19 +68,6 @@ unpack notebookPath = do
     Yaml.encodeFileWith yamlOptions sourcesPath sources
     Yaml.encodeFileWith yamlOptions outputsPath outputs
     Text.writeFile sourcesMdPath markdownText
-
-decodeNotebookThen ::
-  (MonadError UnpackError m) =>
-  (forall a. (Aeson.ToJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> m b) ->
-  ByteString ->
-  m b
-decodeNotebookThen onSuccess bytes =
-  case Aeson.eitherDecodeStrict bytes of
-    Right (nb :: Ipynb.Notebook Ipynb.NbV4) -> onSuccess nb
-    Left _ ->
-      case Aeson.eitherDecodeStrict bytes of
-        Right (nb :: Ipynb.Notebook Ipynb.NbV3) -> onSuccess nb
-        Left message -> throwError $ Nbparts.UnpackJSONDecodeError (T.pack message)
 
 hasOnlyOneNewline :: T.Text -> Bool
 hasOnlyOneNewline text = T.length (T.filter (== '\n') text) == 1

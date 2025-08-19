@@ -1,6 +1,7 @@
 module Nbparts.Pack where
 
 import Control.Arrow (left)
+import Control.Monad ((>=>))
 import Control.Monad.Error.Class (MonadError (throwError), liftEither)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson qualified as Aeson
@@ -35,36 +36,29 @@ pack nbpartsDir maybeOutputPath = do
   (metadata :: Nbparts.Metadata) <- liftEither =<< liftIO (left Nbparts.PackParseMetadataError <$> Yaml.decodeFileEither metadataPath)
   (unembeddedOutputs :: Nbparts.UnembeddedOutputs) <- liftEither =<< liftIO (left Nbparts.PackParseOutputsError <$> Yaml.decodeFileEither outputsPath)
 
-  -- Create and export the notebook.
-  let processNb :: (MonadError PackError m, MonadIO m, Aeson.ToJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> m ()
-      processNb nb = do
-        filledNb <- fillNotebook nbpartsDir sources metadata unembeddedOutputs nb
-        liftIO $ exportNotebook outputPath filledNb
-
   let (Nbparts.Metadata major minor _ _) = metadata
-  case major of
-    3 -> processNb $ (emptyNotebook @Ipynb.NbV3) (major, minor)
-    4 -> processNb $ (emptyNotebook @Ipynb.NbV4) (major, minor)
+  nb <- case major of
+    3 -> pure $ Nbparts.SomeNotebook $ (emptyNotebook @Ipynb.NbV3) (major, minor)
+    4 -> pure $ Nbparts.SomeNotebook $ (emptyNotebook @Ipynb.NbV4) (major, minor)
     _ -> throwError $ Nbparts.PackUnsupportedNotebookFormat (major, minor)
 
-fillNotebook ::
-  (MonadError PackError m, MonadIO m) =>
-  FilePath ->
-  [Nbparts.Source] ->
-  Nbparts.Metadata ->
-  Nbparts.UnembeddedOutputs ->
-  Ipynb.Notebook a ->
-  m (Ipynb.Notebook a)
-fillNotebook nbpartsDir sources metadata unembeddedOutputs nb = do
-  nbWithSources <- liftIO $ Nbparts.fillSources nbpartsDir nb sources
-  nbWithSourcesAndMeta <- liftEither $ Nbparts.fillMetadata nbWithSources metadata
-  Nbparts.fillOutputs nbpartsDir unembeddedOutputs nbWithSourcesAndMeta
+  -- Create and export the notebook.
+  filledNb <-
+    Nbparts.withSomeNotebook
+      nb
+      ( liftIO . Nbparts.fillSources nbpartsDir sources
+          >=> liftEither . Nbparts.fillMetadata metadata
+          >=> Nbparts.fillOutputs nbpartsDir unembeddedOutputs
+          >=> pure . Nbparts.SomeNotebook
+      )
+
+  liftIO $ exportJson outputPath filledNb
 
 prettyConfig :: AesonPretty.Config
 prettyConfig = AesonPretty.defConfig {confIndent = AesonPretty.Spaces 1}
 
-exportNotebook :: (Aeson.ToJSON (Ipynb.Notebook a)) => FilePath -> Ipynb.Notebook a -> IO ()
-exportNotebook fp = LazyByteString.writeFile fp . AesonPretty.encodePretty' prettyConfig
+exportJson :: (Aeson.ToJSON (a)) => FilePath -> a -> IO ()
+exportJson fp = LazyByteString.writeFile fp . AesonPretty.encodePretty' prettyConfig
 
 emptyNotebook :: (Int, Int) -> Ipynb.Notebook a
 emptyNotebook format = Ipynb.Notebook (Ipynb.JSONMeta Map.empty) format []

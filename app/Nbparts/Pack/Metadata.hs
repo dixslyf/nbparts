@@ -8,8 +8,8 @@ import Nbparts.Pack.Error (PackError (..))
 import Nbparts.Pack.Error qualified as Nbparts
 import Nbparts.Types qualified as Nbparts
 
-fillMetadata :: Ipynb.Notebook a -> Nbparts.Metadata -> Either Nbparts.PackError (Ipynb.Notebook a)
-fillMetadata (Ipynb.Notebook _ _ cells) (Nbparts.Metadata formatMajor formatMinor nbMeta cellsMeta) =
+fillMetadata :: Nbparts.Metadata -> Ipynb.Notebook a -> Either Nbparts.PackError (Ipynb.Notebook a)
+fillMetadata (Nbparts.Metadata formatMajor formatMinor nbMeta cellsMeta) (Ipynb.Notebook _ _ cells) =
   Ipynb.Notebook
     nbMeta
     (formatMajor, formatMinor)
