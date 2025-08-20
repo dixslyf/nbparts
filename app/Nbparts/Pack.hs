@@ -55,7 +55,6 @@ pack (PackOptions nbpartsDir maybeOutputPath) = do
 
   let (Nbparts.NotebookMetadata major minor _ _) = metadata
   nb <- case major of
-    3 -> pure $ Nbparts.SomeNotebook $ (emptyNotebook @Ipynb.NbV3) (major, minor)
     4 -> pure $ Nbparts.SomeNotebook $ (emptyNotebook @Ipynb.NbV4) (major, minor)
     _ -> throwError $ Nbparts.PackUnsupportedNotebookFormat (major, minor)
 

@@ -23,7 +23,7 @@ data CellSource = CellSource
   }
   deriving (Generic, Show)
 
-data CellType = Markdown | Heading {headingLevel :: Int} | Raw | Code
+data CellType = Markdown | Raw | Code
   deriving (Generic, Show)
 
 data CellMarker = CellMarker
@@ -70,7 +70,6 @@ jsonOptions =
           },
       constructorTagModifier = \case
         "Markdown" -> "markdown"
-        "Heading" -> "heading"
         "Raw" -> "raw"
         "Code" -> "code"
         other -> other

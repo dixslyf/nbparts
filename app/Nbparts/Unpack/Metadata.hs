@@ -7,6 +7,9 @@ import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack.Error (UnpackError)
 import Nbparts.Unpack.Error qualified as Nbparts
 
+extractNotebookVersion :: Ipynb.Notebook a -> (Int, Int)
+extractNotebookVersion (Ipynb.Notebook _ format _) = format
+
 collectMetadata :: Ipynb.Notebook a -> Either UnpackError Nbparts.NotebookMetadata
 collectMetadata (Ipynb.Notebook toplevelMeta (formatMajor, formatMinor) cells) = do
   cellsMetaList <- traverse extractCellMetadata cells

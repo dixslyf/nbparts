@@ -39,7 +39,6 @@ parseSource = do
     Nbparts.Code -> parseCodeOrRawCell
     Nbparts.Raw -> parseCodeOrRawCell
     Nbparts.Markdown -> fixAttachments maybeAttachmentNames <$> parseOtherCell
-    _ -> parseOtherCell
 
   let src = Nbparts.Util.Text.splitKeepNewlines srcText
 

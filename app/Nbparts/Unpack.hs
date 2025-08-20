@@ -2,7 +2,8 @@ module Nbparts.Unpack where
 
 import Control.Arrow (left)
 import Control.Monad ((>=>))
-import Control.Monad.Error.Class (MonadError, liftEither)
+import Control.Monad qualified as Monad
+import Control.Monad.Error.Class (MonadError (throwError), liftEither)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.KeyMap qualified as Aeson.KeyMap
@@ -15,7 +16,7 @@ import Data.Text.IO qualified as TIO
 import Data.Text.IO qualified as Text
 import Data.Yaml qualified as Yaml
 import Nbparts.Types qualified as Nbparts
-import Nbparts.Unpack.Error (UnpackError)
+import Nbparts.Unpack.Error (UnpackError (UnpackUnsupportedNotebookFormat))
 import Nbparts.Unpack.Error qualified as Nbparts
 import Nbparts.Unpack.Metadata qualified as Nbparts
 import Nbparts.Unpack.Outputs qualified as Nbparts
@@ -24,6 +25,9 @@ import Nbparts.Unpack.Sources.Markdown qualified as Nbparts
 import System.Directory qualified as Directory
 import System.FilePath ((<.>), (</>))
 import Text.Libyaml qualified as Libyaml
+
+minNotebookFormat :: (Int, Int)
+minNotebookFormat = (4, 0)
 
 recommendedNotebookFormat :: (Int, Int)
 recommendedNotebookFormat = (4, 5)
@@ -51,10 +55,14 @@ unpack (UnpackOptions notebookPath sourcesFormat) = do
     liftEither $
       left (Nbparts.UnpackJSONDecodeError . T.pack) $
         Aeson.eitherDecodeStrict notebookBytes
+  let withNb = Nbparts.withSomeNotebook nb
+
+  -- Check notebook version.
+  let format = withNb Nbparts.extractNotebookVersion
+  Monad.when (format < minNotebookFormat) $ throwError (UnpackUnsupportedNotebookFormat format)
 
   -- Collect sources, metadata and outputs.
   let manifest = Nbparts.mkManifest sourcesFormat
-  let withNb = Nbparts.withSomeNotebook nb
   metadata <- liftEither $ withNb Nbparts.collectMetadata
   sources <- withNb (Nbparts.collectSources exportDirectory sourceMediaSubdir)
   outputs <- withNb (liftEither . Nbparts.collectOutputs >=> liftIO . Nbparts.unembedOutputs exportDirectory outputMediaSubdir)

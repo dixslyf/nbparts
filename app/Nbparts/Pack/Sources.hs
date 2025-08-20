@@ -14,7 +14,6 @@ sourceToCell :: FilePath -> Nbparts.CellSource -> IO (Ipynb.Cell a)
 sourceToCell prefixDir (Nbparts.CellSource cellId cellType source attachments) = do
   let cellType' = case cellType of
         Nbparts.Markdown -> Ipynb.Markdown
-        (Nbparts.Heading headingLevel) -> Ipynb.Heading headingLevel
         Nbparts.Raw -> Ipynb.Raw
         Nbparts.Code -> Ipynb.Code Nothing []
   attachments' <- traverse (Nbparts.embedMimeAttachments . Nbparts.adjustMimeAttachmentsPaths prefixDir) attachments

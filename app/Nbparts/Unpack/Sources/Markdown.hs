@@ -32,11 +32,6 @@ sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Markdown source m
       pure (fixedMdText, if Map.null innerAttachmentNames then Nothing else Just attachmentNames)
     Nothing -> pure (mdText, Nothing)
   pure $ cellStart (Nbparts.CellMarker cellId cellType maybeAttachmentNames) <> "\n" <> fixedMdText
-sourceToMarkdown _ (Nbparts.CellSource cellId cellType@(Nbparts.Heading _) source _) =
-  pure $
-    cellStart (Nbparts.CellMarker cellId cellType Nothing)
-      <> "\n"
-      <> Text.concat source
 sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Raw source _) =
   pure $
     Text.intercalate

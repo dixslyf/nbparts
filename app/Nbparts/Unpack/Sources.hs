@@ -19,6 +19,6 @@ convertCell dirPrefix subdir (Ipynb.Cell cellType maybeCellId (Ipynb.Source sour
 
 convertCellType :: Ipynb.CellType a -> Nbparts.CellType
 convertCellType Ipynb.Markdown = Nbparts.Markdown
-convertCellType (Ipynb.Heading headingLevel) = Nbparts.Heading headingLevel
 convertCellType Ipynb.Raw = Nbparts.Raw
 convertCellType (Ipynb.Code _ _) = Nbparts.Code
+convertCellType (Ipynb.Heading _) = error "Unexpected heading cell" -- Should not be possible since we only deal with V4 notebooks.
