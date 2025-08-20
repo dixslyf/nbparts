@@ -22,17 +22,24 @@ executable nbparts
         Nbparts.Types,
         Nbparts.Unpack,
         Nbparts.Unpack.Sources,
+        Nbparts.Unpack.Sources.Markdown,
         Nbparts.Unpack.Outputs,
         Nbparts.Unpack.Metadata,
         Nbparts.Unpack.Mime,
         Nbparts.Unpack.Error,
         Nbparts.Pack,
         Nbparts.Pack.Sources,
+        Nbparts.Pack.Sources.Markdown,
         Nbparts.Pack.Outputs,
         Nbparts.Pack.Metadata,
         Nbparts.Pack.Mime,
-        Nbparts.Pack.Error
-    -- other-extensions:
+        Nbparts.Pack.Error,
+        Nbparts.Util.Text,
+        Nbparts.Util.Markdown,
+        Nbparts.Util.Map,
+        Paths_nbparts
+    autogen-modules:
+        Paths_nbparts
     build-depends:
         directory ^>=1.3.8.5,
         base ^>=4.19.2.0,
@@ -48,6 +55,8 @@ executable nbparts
         yaml ^>=0.11.11.2,
         libyaml ^>=0.1.4,
         crypton ^>=1.0.4,
-        mime-types ^>= 0.1.2.0
+        mime-types ^>= 0.1.2.0,
+        cmark-gfm ^>=0.2.6,
+        megaparsec ^>=9.7.0
     hs-source-dirs: app
     default-language: GHC2021

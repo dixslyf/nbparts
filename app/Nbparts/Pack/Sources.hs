@@ -5,8 +5,8 @@ import Data.Map qualified as Map
 import Nbparts.Pack.Mime qualified as Nbparts
 import Nbparts.Types qualified as Nbparts
 
-fillSources :: FilePath -> Ipynb.Notebook a -> [Nbparts.Source] -> IO (Ipynb.Notebook a)
-fillSources prefixDir (Ipynb.Notebook meta format _) sources = do
+fillSources :: FilePath -> [Nbparts.Source] -> Ipynb.Notebook a -> IO (Ipynb.Notebook a)
+fillSources prefixDir sources (Ipynb.Notebook meta format _) = do
   cells <- traverse (sourceToCell prefixDir) sources
   return $ Ipynb.Notebook meta format cells
 

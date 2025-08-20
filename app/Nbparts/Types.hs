@@ -1,13 +1,63 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Nbparts.Types where
 
+import Control.Applicative (Alternative ((<|>)))
 import Data.Aeson (Options (..), SumEncoding (..))
 import Data.Aeson qualified as Aeson
 import Data.Ipynb qualified as Ipynb
 import Data.Map (Map)
 import Data.Text (Text)
+import Data.Text qualified as Text
+import Data.Version qualified
 import GHC.Generics (Generic)
+import Paths_nbparts qualified
+
+currentNbpartsVersion :: Text
+currentNbpartsVersion = Text.pack $ Data.Version.showVersion Paths_nbparts.version
+
+data NbpartsManifest = NbpartsManifest
+  { nbpartsVersion :: Text,
+    sourcesFormat :: NbpartsFormat
+  }
+  deriving (Generic, Show)
+
+mkNbpartsManifest :: NbpartsFormat -> NbpartsManifest
+mkNbpartsManifest = NbpartsManifest currentNbpartsVersion
+
+instance Aeson.ToJSON NbpartsManifest where
+  toJSON = Aeson.genericToJSON jsonOptions
+
+instance Aeson.FromJSON NbpartsManifest where
+  parseJSON = Aeson.genericParseJSON jsonOptions
+
+data NbpartsFormat = FormatYaml | FormatMarkdown
+  deriving (Generic, Show)
+
+instance Aeson.ToJSON NbpartsFormat where
+  toJSON = Aeson.genericToJSON jsonOptions
+
+instance Aeson.FromJSON NbpartsFormat where
+  parseJSON = Aeson.genericParseJSON jsonOptions
+
+data SomeNotebook where
+  SomeNotebook :: (Aeson.ToJSON (Ipynb.Notebook a), Aeson.FromJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> SomeNotebook
+
+instance Show SomeNotebook where
+  show (SomeNotebook nb) = "SomeNotebook (" <> show nb <> ")"
+
+instance Aeson.ToJSON SomeNotebook where
+  toJSON (SomeNotebook nb) = Aeson.toJSON nb
+
+instance Aeson.FromJSON SomeNotebook where
+  parseJSON v =
+    SomeNotebook <$> (Aeson.parseJSON @(Ipynb.Notebook Ipynb.NbV3)) v
+      <|> SomeNotebook <$> (Aeson.parseJSON @(Ipynb.Notebook Ipynb.NbV4)) v
+
+withSomeNotebook :: SomeNotebook -> (forall a. (Aeson.ToJSON (Ipynb.Notebook a), Aeson.FromJSON (Ipynb.Notebook a)) => Ipynb.Notebook a -> r) -> r
+withSomeNotebook (SomeNotebook nb) f = f nb
 
 data Source = Source
   { cellType :: CellType,
@@ -129,5 +179,25 @@ jsonOptions =
         "Err" -> "error"
         "CodeCellMetadata" -> "code-cell"
         "GenericCellMetadata" -> "generic-cell"
+        "FormatYaml" -> "yaml"
+        "FormatMarkdown" -> "markdown"
         other -> other
     }
+
+data CellInfo = CellInfo
+  { cellId :: Text,
+    cellType :: CellType,
+    attachmentUrls :: Maybe CellAttachmentUrls
+  }
+  deriving (Generic, Show)
+
+instance Aeson.ToJSON CellInfo
+
+instance Aeson.FromJSON CellInfo
+
+newtype CellAttachmentUrls = CellAttachmentUrls (Map Text Text)
+  deriving (Generic, Show)
+
+instance Aeson.ToJSON CellAttachmentUrls
+
+instance Aeson.FromJSON CellAttachmentUrls

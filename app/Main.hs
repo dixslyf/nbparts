@@ -1,43 +1,48 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
 import Control.Arrow (left)
 import Control.Exception qualified as Exception
+import Control.Monad.Error.Class (MonadError (throwError))
 import Control.Monad.Except (runExceptT)
 import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
 import Nbparts.Pack qualified as Nbparts
 import Nbparts.Pack.Error qualified as Nbparts
+import Nbparts.Types (NbpartsFormat)
 import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack qualified as Nbparts
 import Nbparts.Unpack.Error qualified as Nbparts
 import Options.Applicative qualified as OA
 import System.Exit (ExitCode (ExitFailure), exitWith)
 import System.IO (stderr)
+import Text.Megaparsec qualified as Megaparsec
 
 newtype AppOptions = AppOptions
   { command :: Command
   }
 
-newtype UnpackOptions = UnpackOptions
-  { notebook :: FilePath
-  }
+data Command = Unpack Nbparts.UnpackOptions | Pack Nbparts.PackOptions
 
-data PackOptions = PackOptions
-  { directory :: FilePath,
-    outputPath :: Maybe FilePath
-  }
+unpackOptionsParser :: OA.Parser Nbparts.UnpackOptions
+unpackOptionsParser =
+  Nbparts.UnpackOptions
+    <$> OA.argument OA.str (OA.metavar "NOTEBOOK" <> OA.help "Path to the notebook to unpack")
+    <*> OA.option
+      parseSourcesFormat
+      ( OA.short 's'
+          <> OA.long "source-format"
+          <> OA.metavar "yaml|markdown"
+          <> OA.help "Output format for sources"
+          <> OA.value Nbparts.FormatYaml
+      )
 
-data Command = Unpack UnpackOptions | Pack PackOptions
-
-unpackOptionsParser :: OA.Parser UnpackOptions
-unpackOptionsParser = UnpackOptions <$> OA.argument OA.str (OA.metavar "NOTEBOOK" <> OA.help "Path to the notebook to unpack")
-
-packOptionsParser :: OA.Parser PackOptions
+packOptionsParser :: OA.Parser Nbparts.PackOptions
 packOptionsParser =
-  PackOptions
+  Nbparts.PackOptions
     <$> OA.argument OA.str (OA.metavar "DIRECTORY" <> OA.help "Path to the directory to pack into a notebook")
     <*> OA.optional (OA.strOption $ OA.short 'o' <> OA.metavar "OUTPUT_PATH" <> OA.help "Path to write the notebook to")
 
@@ -49,6 +54,12 @@ commandParser =
 
 appOptionsParser :: OA.Parser AppOptions
 appOptionsParser = AppOptions <$> commandParser
+
+parseSourcesFormat :: OA.ReadM NbpartsFormat
+parseSourcesFormat = OA.eitherReader $ \case
+  "yaml" -> pure Nbparts.FormatYaml
+  "markdown" -> pure Nbparts.FormatMarkdown
+  s -> throwError $ "Invalid sources format: " <> s
 
 parseOpts :: IO AppOptions
 parseOpts = OA.customExecParser prefs opts
@@ -63,8 +74,8 @@ main = do
   opts <- parseOpts
 
   result <- case command opts of
-    Unpack (UnpackOptions notebook) -> left UnpackError <$> runExceptT (Nbparts.unpack notebook)
-    Pack (PackOptions nbpartsDir outputPath) -> left PackError <$> runExceptT (Nbparts.pack nbpartsDir outputPath)
+    Unpack unpackOpts -> left UnpackError <$> runExceptT (Nbparts.unpack unpackOpts)
+    Pack packOpts -> left PackError <$> runExceptT (Nbparts.pack packOpts)
 
   case result of
     Right _ -> pure ()
@@ -84,8 +95,16 @@ renderError err = case err of
       <> "."
       <> T.show (snd Nbparts.recommendedNotebookFormat)
       <> "."
+  UnpackError (Nbparts.UnpackMissingCellAttachmentError cellId attachmentName) ->
+    "Could not find attachment \""
+      <> attachmentName
+      <> "\" for cell \""
+      <> cellId
+      <> "\""
   PackError (Nbparts.PackUnsupportedNotebookFormat (major, minor)) -> "Unsupported notebook format: " <> Text.show major <> "." <> Text.show minor
-  PackError (Nbparts.PackParseSourcesError parseErr) -> "Failed to parse sources: " <> T.pack (Exception.displayException parseErr)
+  PackError (Nbparts.PackParseManifestError parseErr) -> "Failed to parse manifest: " <> T.pack (Exception.displayException parseErr)
+  PackError (Nbparts.PackParseYamlSourcesError parseErr) -> "Failed to parse sources: " <> T.pack (Exception.displayException parseErr)
+  PackError (Nbparts.PackParseMarkdownSourcesError errBundle) -> Text.pack $ Megaparsec.errorBundlePretty errBundle
   PackError (Nbparts.PackParseMetadataError parseErr) -> "Failed to parse metadata: " <> T.pack (Exception.displayException parseErr)
   PackError (Nbparts.PackParseOutputsError parseErr) -> "Failed to parse outputs: " <> T.pack (Exception.displayException parseErr)
   PackError Nbparts.PackMissingCellIdError -> "Markdown content contains missing cell ID"
