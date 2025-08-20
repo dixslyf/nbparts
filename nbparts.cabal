@@ -65,3 +65,4 @@ executable nbparts
         megaparsec ^>=9.7.0
     hs-source-dirs: app
     default-language: GHC2021
+    ghc-options: -Wall -Wmissing-import-lists
