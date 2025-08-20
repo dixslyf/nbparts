@@ -4,7 +4,6 @@ import Data.Ipynb qualified as Ipynb
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
-import Nbparts.Pack.Error (PackError (..))
 import Nbparts.Pack.Error qualified as Nbparts
 import Nbparts.Types qualified as Nbparts
 

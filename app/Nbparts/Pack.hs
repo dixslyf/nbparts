@@ -5,7 +5,7 @@ import Control.Monad ((>=>))
 import Control.Monad.Error.Class (MonadError (throwError), liftEither)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson qualified as Aeson
-import Data.Aeson.Encode.Pretty (Config (..))
+import Data.Aeson.Encode.Pretty (Config (confIndent))
 import Data.Aeson.Encode.Pretty qualified as AesonPretty
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Ipynb qualified as Ipynb

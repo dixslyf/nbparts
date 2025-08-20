@@ -3,7 +3,6 @@ module Nbparts.Unpack.Metadata where
 import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
 import Data.Text (Text)
-import Nbparts.Types (Metadata (..))
 import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack.Error (UnpackError)
 import Nbparts.Unpack.Error qualified as Nbparts

@@ -2,7 +2,6 @@ module Nbparts.Pack.Outputs where
 
 import Control.Monad.Error.Class (MonadError, liftEither)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Ipynb (Output (..))
 import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
 import Nbparts.Pack.Error qualified as Nbparts

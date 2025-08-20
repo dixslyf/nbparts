@@ -4,7 +4,7 @@ import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
 import Data.Text (Text)
-import Nbparts.Types (UnembeddedOutput (..))
+import Nbparts.Types (UnembeddedOutput (DisplayData, Err, ExecuteResult))
 import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack.Error (UnpackError)
 import Nbparts.Unpack.Error qualified as Nbparts

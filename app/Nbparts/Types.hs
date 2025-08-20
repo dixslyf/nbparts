@@ -1,7 +1,7 @@
 module Nbparts.Types where
 
 import Control.Applicative (Alternative ((<|>)))
-import Data.Aeson (Options (..), SumEncoding (..))
+import Data.Aeson (Options (constructorTagModifier, sumEncoding))
 import Data.Aeson qualified as Aeson
 import Data.Ipynb qualified as Ipynb
 import Data.Map (Map)
