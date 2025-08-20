@@ -1,4 +1,6 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Nbparts.Types where
 
@@ -181,3 +183,21 @@ jsonOptions =
         "FormatMarkdown" -> "markdown"
         other -> other
     }
+
+data CellInfo = CellInfo
+  { cellId :: Text,
+    cellType :: CellType,
+    attachmentUrls :: Maybe CellAttachmentUrls
+  }
+  deriving (Generic, Show)
+
+instance Aeson.ToJSON CellInfo
+
+instance Aeson.FromJSON CellInfo
+
+newtype CellAttachmentUrls = CellAttachmentUrls (Map Text Text)
+  deriving (Generic, Show)
+
+instance Aeson.ToJSON CellAttachmentUrls
+
+instance Aeson.FromJSON CellAttachmentUrls

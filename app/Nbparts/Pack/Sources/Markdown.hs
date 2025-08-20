@@ -14,9 +14,10 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Tuple qualified as Tuple
 import Nbparts.Pack.Error qualified as Nbparts
+import Nbparts.Pack.Mime qualified as Nbparts.Mime
 import Nbparts.Types qualified as Nbparts
-import Nbparts.Unpack.Sources.Markdown qualified as Nbparts
-import Network.Mime qualified as Mime
+import Nbparts.Util.Markdown qualified
+import Nbparts.Util.Text qualified
 import Text.Megaparsec (Parsec)
 import Text.Megaparsec qualified as P
 import Text.Megaparsec.Char qualified as P
@@ -42,7 +43,7 @@ parseSource = do
     Nbparts.Markdown -> fixAttachments maybeAttachmentUrls <$> parseOtherCell
     _ -> parseOtherCell
 
-  let src = splitKeepNewlines srcText
+  let src = Nbparts.Util.Text.splitKeepNewlines srcText
 
   let attachments = do
         (Nbparts.CellAttachmentUrls attachmentUrls) <- maybeAttachmentUrls
@@ -51,7 +52,7 @@ parseSource = do
         -- We shouldn't have any duplicate keys since the mapping should be one-to-one.
         -- This is now a mapping from the original attachment names to their corresponding media file paths.
         let reversed = Map.fromList $ map Tuple.swap (Map.toList attachmentNames)
-        pure $ Nbparts.UnembeddedMimeAttachments (Map.map mediaPathToMimeBundle reversed)
+        pure $ Nbparts.UnembeddedMimeAttachments (Map.map Nbparts.Mime.mediaPathToMimeBundle reversed)
 
   pure $ Nbparts.Source cellType cellId src attachments
 
@@ -88,19 +89,10 @@ parseCellInfo = do
   Monad.void $ P.string "nbparts:cell"
   P.space1
   json <- Text.pack <$> P.manyTill P.anySingle (P.string "-->")
-  let jsonUnescaped = Nbparts.unescapeCellInfo json
+  let jsonUnescaped = unescapeCellInfo json
   case Aeson.eitherDecodeStrict (Text.encodeUtf8 jsonUnescaped) of
     Right cellInfo -> pure cellInfo
     Left err -> P.customFailure (Nbparts.ParseMarkdownSourcesJsonError $ Text.pack err)
-
-splitKeepNewlines :: Text -> [Text]
-splitKeepNewlines txt
-  | Text.null txt = []
-  | otherwise =
-      let (before, rest) = Text.break (== '\n') txt
-       in case Text.uncons rest of
-            Just ('\n', rest') -> (before `Text.snoc` '\n') : splitKeepNewlines rest'
-            _ -> [before]
 
 fixAttachments :: Maybe Nbparts.CellAttachmentUrls -> Text -> Text
 fixAttachments maybeAttachmentUrls mdText = do
@@ -108,7 +100,7 @@ fixAttachments maybeAttachmentUrls mdText = do
     Just attachmentUrls ->
       let mdTree = CMarkGFM.commonmarkToNode [CMarkGFM.optSourcePos] [] mdText
           attachmentFixes = collectAttachmentFixes attachmentUrls mdTree
-       in Nbparts.applyAttachmentFixes attachmentFixes mdText
+       in Nbparts.Util.Markdown.replaceSlices mdText attachmentFixes
     Nothing -> mdText
 
 collectAttachmentFixes ::
@@ -131,9 +123,5 @@ collectAttachmentFixes
          in [(posInfo, fixedImageNodeText)]
 collectAttachmentFixes attachments (CMarkGFM.Node _ _ children) = foldMap (collectAttachmentFixes attachments) children
 
--- TODO: Should the mime bundle really be a singleton? Is it possible for there to be multiple entries?
-mediaPathToMimeBundle :: Text -> Nbparts.UnembeddedMimeBundle
-mediaPathToMimeBundle fp =
-  Map.singleton
-    (Text.decodeUtf8 $ Mime.defaultMimeLookup fp)
-    $ Nbparts.BinaryData (Text.unpack fp)
+unescapeCellInfo :: Text -> Text
+unescapeCellInfo = Text.replace "\\\\" "\\" . Text.replace "-\\->" "-->"
