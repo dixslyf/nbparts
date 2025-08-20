@@ -22,15 +22,15 @@ import Text.Megaparsec.Char qualified as P
 
 type Parser = Parsec Nbparts.ParseMarkdownSourcesError Text
 
-markdownToSources :: String -> Text -> Either Nbparts.PackError [Nbparts.Source]
+markdownToSources :: String -> Text -> Either Nbparts.PackError [Nbparts.CellSource]
 markdownToSources filename mdText = left Nbparts.PackParseMarkdownSourcesError $ P.runParser parseSources filename mdText
 
-parseSources :: Parser [Nbparts.Source]
+parseSources :: Parser [Nbparts.CellSource]
 parseSources = P.many parseSource
 
-parseSource :: Parser Nbparts.Source
+parseSource :: Parser Nbparts.CellSource
 parseSource = do
-  (Nbparts.CellInfo cellId cellType maybeAttachmentUrls) <- parseCellInfo
+  (Nbparts.CellMarker cellId cellType maybeAttachmentNames) <- parseCellInfo
 
   -- Try removing the newline added after the <!-- nbparts:cell ... --> comment.
   Monad.void $ P.optional P.newline
@@ -38,21 +38,19 @@ parseSource = do
   srcText <- case cellType of
     Nbparts.Code -> parseCodeOrRawCell
     Nbparts.Raw -> parseCodeOrRawCell
-    Nbparts.Markdown -> fixAttachments maybeAttachmentUrls <$> parseOtherCell
+    Nbparts.Markdown -> fixAttachments maybeAttachmentNames <$> parseOtherCell
     _ -> parseOtherCell
 
   let src = Nbparts.Util.Text.splitKeepNewlines srcText
 
   let attachments = do
-        (Nbparts.CellAttachmentUrls attachmentUrls) <- maybeAttachmentUrls
-        -- Remove the "attachment:" prefix from attachment URLs to get the original attachment names.
-        let attachmentNames = Map.map (\url -> Maybe.fromMaybe url $ Text.stripPrefix "attachment:" url) attachmentUrls
+        (Nbparts.AttachmentNames attachmentNames) <- maybeAttachmentNames
         -- We shouldn't have any duplicate keys since the mapping should be one-to-one.
         -- This is now a mapping from the original attachment names to their corresponding media file paths.
         let reversed = Map.fromList $ map Tuple.swap (Map.toList attachmentNames)
         pure $ Nbparts.UnembeddedMimeAttachments (Map.map Nbparts.Mime.mediaPathToMimeBundle reversed)
 
-  pure $ Nbparts.Source cellType cellId src attachments
+  pure $ Nbparts.CellSource cellId cellType src attachments
 
 parseCodeOrRawCell :: Parser Text
 parseCodeOrRawCell = do
@@ -80,7 +78,7 @@ parseOtherCell = do
   -- newlines, so we have to remove them using plain text functions instead of Megaparsec.
   pure $ Maybe.fromMaybe body $ Text.stripSuffix "\n\n" body
 
-parseCellInfo :: Parser Nbparts.CellInfo
+parseCellInfo :: Parser Nbparts.CellMarker
 parseCellInfo = do
   Monad.void $ P.string "<!--"
   P.space
@@ -92,31 +90,31 @@ parseCellInfo = do
     Right cellInfo -> pure cellInfo
     Left err -> P.customFailure (Nbparts.ParseMarkdownSourcesJsonError $ Text.pack err)
 
-fixAttachments :: Maybe Nbparts.CellAttachmentUrls -> Text -> Text
-fixAttachments maybeAttachmentUrls mdText = do
-  case maybeAttachmentUrls of
-    Just attachmentUrls ->
+fixAttachments :: Maybe Nbparts.AttachmentNames -> Text -> Text
+fixAttachments maybeAttachmentNames mdText = do
+  case maybeAttachmentNames of
+    Just attachmentNames ->
       let mdTree = CMarkGFM.commonmarkToNode [CMarkGFM.optSourcePos] [] mdText
-          attachmentFixes = collectAttachmentFixes attachmentUrls mdTree
+          attachmentFixes = collectAttachmentFixes attachmentNames mdTree
        in Nbparts.Util.Markdown.replaceSlices mdText attachmentFixes
     Nothing -> mdText
 
 collectAttachmentFixes ::
-  Nbparts.CellAttachmentUrls ->
+  Nbparts.AttachmentNames ->
   CMarkGFM.Node ->
   [(CMarkGFM.PosInfo, Text)]
 collectAttachmentFixes
-  (Nbparts.CellAttachmentUrls attachmentUrls)
+  (Nbparts.AttachmentNames attachmentNames)
   (CMarkGFM.Node maybePosInfo (CMarkGFM.IMAGE url title) children)
-    | Maybe.isJust $ Map.lookup url attachmentUrls =
+    | Maybe.isJust $ Map.lookup url attachmentNames =
         let -- Safety: The guard guarantees that the url is in the map.
-            originalUrl = Maybe.fromJust $ Map.lookup url attachmentUrls
+            attachmentName = Maybe.fromJust $ Map.lookup url attachmentNames
 
             -- Safety: We should have parsed with the CMarkGFM.optSourcePos extension,
             -- so position information should be available.
             posInfo = Maybe.fromJust maybePosInfo
 
-            fixedImageNode = CMarkGFM.Node Nothing (CMarkGFM.IMAGE originalUrl title) children
+            fixedImageNode = CMarkGFM.Node Nothing (CMarkGFM.IMAGE ("attachment:" <> attachmentName) title) children
             fixedImageNodeText = Text.strip $ CMarkGFM.nodeToCommonmark [] Nothing fixedImageNode
          in [(posInfo, fixedImageNodeText)]
 collectAttachmentFixes attachments (CMarkGFM.Node _ _ children) = foldMap (collectAttachmentFixes attachments) children

@@ -1,6 +1,7 @@
 module Nbparts.Pack.Mime where
 
 import Data.ByteString qualified as ByteString
+import Data.Coerce (coerce)
 import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
 import Data.Text (Text)
@@ -15,7 +16,7 @@ adjustMimeAttachmentsPaths prefixDir (Nbparts.UnembeddedMimeAttachments attachme
   Nbparts.UnembeddedMimeAttachments $ Map.map (adjustMimeBundlePaths prefixDir) attachments
 
 adjustMimeBundlePaths :: FilePath -> Nbparts.UnembeddedMimeBundle -> Nbparts.UnembeddedMimeBundle
-adjustMimeBundlePaths prefixDir = Map.map (adjustMimeDataPaths prefixDir)
+adjustMimeBundlePaths prefixDir = coerce $ Map.map (adjustMimeDataPaths prefixDir)
 
 adjustMimeDataPaths :: FilePath -> Nbparts.UnembeddedMimeData -> Nbparts.UnembeddedMimeData
 adjustMimeDataPaths prefixDir (Nbparts.BinaryData path) = Nbparts.BinaryData $ prefixDir </> path
@@ -25,7 +26,7 @@ embedMimeAttachments :: Nbparts.UnembeddedMimeAttachments -> IO Ipynb.MimeAttach
 embedMimeAttachments (Nbparts.UnembeddedMimeAttachments unembedded) = Ipynb.MimeAttachments <$> traverse embedMimeBundle unembedded
 
 embedMimeBundle :: Nbparts.UnembeddedMimeBundle -> IO Ipynb.MimeBundle
-embedMimeBundle unembeddedMimeBundle = Ipynb.MimeBundle <$> traverse embedMimeData unembeddedMimeBundle
+embedMimeBundle = coerce (fmap Ipynb.MimeBundle . traverse embedMimeData)
 
 embedMimeData :: Nbparts.UnembeddedMimeData -> IO Ipynb.MimeData
 embedMimeData (Nbparts.BinaryData path) = do
@@ -37,6 +38,7 @@ embedMimeData (Nbparts.JsonData value) = pure $ Ipynb.JsonData value
 -- TODO: Should the mime bundle really be a singleton? Is it possible for there to be multiple entries?
 mediaPathToMimeBundle :: Text -> Nbparts.UnembeddedMimeBundle
 mediaPathToMimeBundle fp =
-  Map.singleton
-    (Text.decodeUtf8 $ Mime.defaultMimeLookup fp)
-    $ Nbparts.BinaryData (Text.unpack fp)
+  coerce $
+    Map.singleton
+      (Text.decodeUtf8 $ Mime.defaultMimeLookup fp)
+      (Nbparts.BinaryData (Text.unpack fp))

@@ -3,6 +3,7 @@ module Nbparts.Unpack.Mime where
 import Crypto.Hash qualified as Hash
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
+import Data.Coerce (coerce)
 import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
@@ -14,11 +15,14 @@ import Network.Mime qualified as Mime
 import System.FilePath ((</>))
 
 unembedMimeAttachments :: FilePath -> FilePath -> Ipynb.MimeAttachments -> IO Nbparts.UnembeddedMimeAttachments
-unembedMimeAttachments dirPrefix subdir (Ipynb.MimeAttachments mimeAttachments) =
-  Nbparts.UnembeddedMimeAttachments <$> traverse (unembedMimeBundle dirPrefix subdir) mimeAttachments
+unembedMimeAttachments dirPrefix subdir = coerce $ fmap Nbparts.UnembeddedMimeAttachments . traverse (unembedMimeBundle dirPrefix subdir)
 
 unembedMimeBundle :: FilePath -> FilePath -> Ipynb.MimeBundle -> IO Nbparts.UnembeddedMimeBundle
-unembedMimeBundle dirPrefix subdir (Ipynb.MimeBundle mimeBundle) = Map.traverseWithKey (unembedMimeData dirPrefix subdir) mimeBundle
+unembedMimeBundle dirPrefix subdir =
+  coerce $
+    fmap Nbparts.UnembeddedMimeBundle
+      . Map.traverseWithKey
+        (unembedMimeData dirPrefix subdir)
 
 unembedMimeData :: FilePath -> FilePath -> Ipynb.MimeType -> Ipynb.MimeData -> IO Nbparts.UnembeddedMimeData
 unembedMimeData dirPrefix subdir mimetype (Ipynb.BinaryData bytes) = do

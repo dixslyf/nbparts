@@ -5,13 +5,13 @@ import Data.Map qualified as Map
 import Nbparts.Pack.Mime qualified as Nbparts
 import Nbparts.Types qualified as Nbparts
 
-fillSources :: FilePath -> [Nbparts.Source] -> Ipynb.Notebook a -> IO (Ipynb.Notebook a)
+fillSources :: FilePath -> [Nbparts.CellSource] -> Ipynb.Notebook a -> IO (Ipynb.Notebook a)
 fillSources prefixDir sources (Ipynb.Notebook meta format _) = do
   cells <- traverse (sourceToCell prefixDir) sources
   return $ Ipynb.Notebook meta format cells
 
-sourceToCell :: FilePath -> Nbparts.Source -> IO (Ipynb.Cell a)
-sourceToCell prefixDir (Nbparts.Source cellType cellId source attachments) = do
+sourceToCell :: FilePath -> Nbparts.CellSource -> IO (Ipynb.Cell a)
+sourceToCell prefixDir (Nbparts.CellSource cellId cellType source attachments) = do
   let cellType' = case cellType of
         Nbparts.Markdown -> Ipynb.Markdown
         (Nbparts.Heading headingLevel) -> Ipynb.Heading headingLevel

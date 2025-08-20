@@ -7,11 +7,11 @@ import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack.Error (UnpackError)
 import Nbparts.Unpack.Error qualified as Nbparts
 
-collectMetadata :: Ipynb.Notebook a -> Either UnpackError Nbparts.Metadata
-collectMetadata (Ipynb.Notebook nbmeta (formatMajor, formatMinor) cells) = do
+collectMetadata :: Ipynb.Notebook a -> Either UnpackError Nbparts.NotebookMetadata
+collectMetadata (Ipynb.Notebook toplevelMeta (formatMajor, formatMinor) cells) = do
   cellsMetaList <- traverse extractCellMetadata cells
   let cellsMeta = Map.fromList cellsMetaList
-  return Nbparts.Metadata {formatMajor, formatMinor, notebook = nbmeta, cells = cellsMeta}
+  return Nbparts.NotebookMetadata {formatMajor, formatMinor, toplevel = toplevelMeta, cells = cellsMeta}
 
 extractCellMetadata :: Ipynb.Cell a -> Either UnpackError (Text, Nbparts.CellMetadata)
 extractCellMetadata (Ipynb.Cell (Ipynb.Code exeCount _) maybeCellId _ meta _) = case maybeCellId of

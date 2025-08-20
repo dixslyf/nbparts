@@ -14,7 +14,6 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.Text.IO qualified as Text
 import Data.Yaml qualified as Yaml
-import Nbparts.Types (NbpartsFormat)
 import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack.Error (UnpackError)
 import Nbparts.Unpack.Error qualified as Nbparts
@@ -31,7 +30,7 @@ recommendedNotebookFormat = (4, 5)
 
 data UnpackOptions = UnpackOptions
   { notebook :: FilePath,
-    sourcesFormat :: NbpartsFormat
+    sourcesFormat :: Nbparts.Format
   }
 
 unpack :: (MonadError UnpackError m, MonadIO m) => UnpackOptions -> m ()
@@ -54,7 +53,7 @@ unpack (UnpackOptions notebookPath sourcesFormat) = do
         Aeson.eitherDecodeStrict notebookBytes
 
   -- Collect sources, metadata and outputs.
-  let manifest = Nbparts.mkNbpartsManifest sourcesFormat
+  let manifest = Nbparts.mkManifest sourcesFormat
   let withNb = Nbparts.withSomeNotebook nb
   metadata <- liftEither $ withNb Nbparts.collectMetadata
   sources <- withNb (Nbparts.collectSources exportDirectory sourceMediaSubdir)
@@ -98,8 +97,8 @@ nbpartsYamlStringStyle s
   | Yaml.isSpecialString s = (Libyaml.NoTag, Libyaml.SingleQuoted)
   | otherwise = (Libyaml.NoTag, Libyaml.PlainNoTag)
 
-extractLanguage :: Nbparts.Metadata -> Maybe T.Text
-extractLanguage (Nbparts.Metadata _ _ (Ipynb.JSONMeta nbMeta) _) = do
+extractLanguage :: Nbparts.NotebookMetadata -> Maybe T.Text
+extractLanguage (Nbparts.NotebookMetadata _ _ (Ipynb.JSONMeta nbMeta) _) = do
   kernelspec <- Map.lookup "kernelspec" nbMeta
   langFromKernelSpec kernelspec
 

@@ -9,7 +9,6 @@ import Data.Text qualified as Text
 import Data.Text.IO qualified as TIO
 import Nbparts.Pack qualified as Nbparts
 import Nbparts.Pack.Error qualified as Nbparts
-import Nbparts.Types (NbpartsFormat)
 import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack qualified as Nbparts
 import Nbparts.Unpack.Error qualified as Nbparts
@@ -52,7 +51,7 @@ commandParser =
 appOptionsParser :: OA.Parser AppOptions
 appOptionsParser = AppOptions <$> commandParser
 
-parseSourcesFormat :: OA.ReadM NbpartsFormat
+parseSourcesFormat :: OA.ReadM Nbparts.Format
 parseSourcesFormat = OA.eitherReader $ \case
   "yaml" -> pure Nbparts.FormatYaml
   "markdown" -> pure Nbparts.FormatMarkdown

@@ -19,7 +19,6 @@ import Nbparts.Pack.Metadata qualified as Nbparts
 import Nbparts.Pack.Outputs qualified as Nbparts
 import Nbparts.Pack.Sources qualified as Nbparts
 import Nbparts.Pack.Sources.Markdown qualified as Nbparts
-import Nbparts.Types (NbpartsManifest (NbpartsManifest))
 import Nbparts.Types qualified as Nbparts
 import System.FilePath ((</>))
 import System.FilePath qualified as FilePath
@@ -37,10 +36,10 @@ pack (PackOptions nbpartsDir maybeOutputPath) = do
 
   -- Read manifest, metadata, sources and outputs.
   let manifestPath = nbpartsDir </> "nbparts.yaml"
-  (NbpartsManifest _nbpartsVersion sourcesFormat) <- liftEither =<< liftIO (left Nbparts.PackParseManifestError <$> Yaml.decodeFileEither manifestPath)
+  (Nbparts.Manifest _nbpartsVersion sourcesFormat) <- liftEither =<< liftIO (left Nbparts.PackParseManifestError <$> Yaml.decodeFileEither manifestPath)
 
   -- TODO: Don't fail if metadata and outputs are missing — just warn.
-  (sources :: [Nbparts.Source]) <- case sourcesFormat of
+  (sources :: [Nbparts.CellSource]) <- case sourcesFormat of
     Nbparts.FormatYaml -> do
       let sourcesPath = nbpartsDir </> "sources.yaml"
       liftEither =<< liftIO (left Nbparts.PackParseYamlSourcesError <$> Yaml.decodeFileEither sourcesPath)
@@ -51,10 +50,10 @@ pack (PackOptions nbpartsDir maybeOutputPath) = do
 
   let metadataPath = nbpartsDir </> "metadata.yaml"
   let outputsPath = nbpartsDir </> "outputs.yaml"
-  (metadata :: Nbparts.Metadata) <- liftEither =<< liftIO (left Nbparts.PackParseMetadataError <$> Yaml.decodeFileEither metadataPath)
-  (unembeddedOutputs :: Nbparts.UnembeddedOutputs) <- liftEither =<< liftIO (left Nbparts.PackParseOutputsError <$> Yaml.decodeFileEither outputsPath)
+  (metadata :: Nbparts.NotebookMetadata) <- liftEither =<< liftIO (left Nbparts.PackParseMetadataError <$> Yaml.decodeFileEither metadataPath)
+  (unembeddedOutputs :: Nbparts.UnembeddedNotebookOutputs) <- liftEither =<< liftIO (left Nbparts.PackParseOutputsError <$> Yaml.decodeFileEither outputsPath)
 
-  let (Nbparts.Metadata major minor _ _) = metadata
+  let (Nbparts.NotebookMetadata major minor _ _) = metadata
   nb <- case major of
     3 -> pure $ Nbparts.SomeNotebook $ (emptyNotebook @Ipynb.NbV3) (major, minor)
     4 -> pure $ Nbparts.SomeNotebook $ (emptyNotebook @Ipynb.NbV4) (major, minor)

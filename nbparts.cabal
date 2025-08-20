@@ -20,6 +20,11 @@ executable nbparts
     main-is: Main.hs
     other-modules:
         Nbparts.Types,
+        Nbparts.Types.Manifest,
+        Nbparts.Types.Sources,
+        Nbparts.Types.Outputs,
+        Nbparts.Types.Metadata,
+        Nbparts.Types.Mime,
         Nbparts.Unpack,
         Nbparts.Unpack.Sources,
         Nbparts.Unpack.Sources.Markdown,
