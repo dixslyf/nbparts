@@ -87,8 +87,9 @@ parseCellInfo = do
   P.space
   Monad.void $ P.string "nbparts:cell"
   P.space1
-  json <- P.manyTill P.anySingle (P.string "-->")
-  case Aeson.eitherDecodeStrict (Text.encodeUtf8 (Text.pack json)) of
+  json <- Text.pack <$> P.manyTill P.anySingle (P.string "-->")
+  let jsonUnescaped = Nbparts.unescapeCellInfo json
+  case Aeson.eitherDecodeStrict (Text.encodeUtf8 jsonUnescaped) of
     Right cellInfo -> pure cellInfo
     Left err -> P.customFailure (Nbparts.ParseMarkdownSourcesJsonError $ Text.pack err)
 
