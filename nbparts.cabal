@@ -40,6 +40,11 @@ executable nbparts
         Paths_nbparts
     autogen-modules:
         Paths_nbparts
+    default-extensions:
+        OverloadedStrings,
+        LambdaCase,
+        NoFieldSelectors,
+        DuplicateRecordFields
     build-depends:
         directory ^>=1.3.8.5,
         base ^>=4.19.2.0,

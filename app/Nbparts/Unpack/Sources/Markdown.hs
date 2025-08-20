@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Nbparts.Unpack.Sources.Markdown where
 
 import CMarkGFM qualified

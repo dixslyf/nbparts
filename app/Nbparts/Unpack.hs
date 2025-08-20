@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Nbparts.Unpack where
 
 import Control.Arrow (left)

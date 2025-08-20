@@ -1,7 +1,3 @@
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NoFieldSelectors #-}
-
 module Nbparts.Types where
 
 import Control.Applicative (Alternative ((<|>)))

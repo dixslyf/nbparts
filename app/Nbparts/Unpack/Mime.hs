@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Nbparts.Unpack.Mime where
 
 import Crypto.Hash qualified as Hash

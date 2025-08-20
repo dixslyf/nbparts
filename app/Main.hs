@@ -1,6 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
-
 module Main where
 
 import Control.Arrow (left)
@@ -71,9 +68,9 @@ data NbpartsError = UnpackError Nbparts.UnpackError | PackError Nbparts.PackErro
 
 main :: IO ()
 main = do
-  opts <- parseOpts
+  (AppOptions command) <- parseOpts
 
-  result <- case command opts of
+  result <- case command of
     Unpack unpackOpts -> left UnpackError <$> runExceptT (Nbparts.unpack unpackOpts)
     Pack packOpts -> left PackError <$> runExceptT (Nbparts.pack packOpts)
 
