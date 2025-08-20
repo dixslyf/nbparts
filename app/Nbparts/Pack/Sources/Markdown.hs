@@ -37,14 +37,10 @@ parseSource = do
   Monad.void $ P.optional P.newline
 
   srcText <- case cellType of
-    Nbparts.Code -> do
-      code <- parseCodeBlock
-      -- During unpacking, we appended two newlines to the end of the cell content for prettier output,
-      -- so, now, we remove the newlines.
-      Monad.void $ P.optional (P.newline >> P.newline)
-      pure code
-    Nbparts.Markdown -> fixAttachments maybeAttachmentUrls <$> parseOtherBlock
-    _ -> parseOtherBlock
+    Nbparts.Code -> parseCodeOrRawCell
+    Nbparts.Raw -> parseCodeOrRawCell
+    Nbparts.Markdown -> fixAttachments maybeAttachmentUrls <$> parseOtherCell
+    _ -> parseOtherCell
 
   let src = splitKeepNewlines srcText
 
@@ -59,6 +55,14 @@ parseSource = do
 
   pure $ Nbparts.Source cellType cellId src attachments
 
+parseCodeOrRawCell :: Parser Text
+parseCodeOrRawCell = do
+  code <- parseCodeBlock
+  -- During unpacking, we appended two newlines to the end of the cell content for prettier output,
+  -- so, now, we remove the newlines.
+  Monad.void $ P.optional (P.newline >> P.newline)
+  pure code
+
 parseCodeBlock :: Parser Text
 parseCodeBlock = do
   Monad.void $ P.string "```"
@@ -69,8 +73,8 @@ parseCodeBlock = do
   let stripped = Maybe.fromMaybe code $ Text.stripSuffix "\n" code
   pure stripped
 
-parseOtherBlock :: Parser Text
-parseOtherBlock = do
+parseOtherCell :: Parser Text
+parseOtherCell = do
   body <- Text.pack <$> P.manyTill P.anySingle (P.lookAhead (Monad.void parseCellInfo <|> P.eof))
   -- Again, removing the trailing two newlines. Since parsing non-code blocks only stops
   -- when encountering the <!-- nbparts:cell ... --> comment, the parsed text contains the

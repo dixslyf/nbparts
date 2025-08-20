@@ -60,18 +60,22 @@ sourceToMarkdown _ (Nbparts.Source cellType@(Nbparts.Heading _) cellId source _)
       <> Text.concat source
 sourceToMarkdown _ (Nbparts.Source cellType@Nbparts.Raw cellId source _) =
   pure $
-    cellStart (CellInfo cellId cellType Nothing)
-      <> "\n"
-      <> Text.concat source
+    Text.intercalate
+      "\n"
+      [ cellStart (CellInfo cellId cellType Nothing),
+        "```",
+        Text.concat source,
+        "```"
+      ]
 sourceToMarkdown lang (Nbparts.Source cellType@Nbparts.Code cellId source _) =
   pure $
-    cellStart (CellInfo cellId cellType Nothing)
-      <> "\n"
-      <> "```"
-      <> lang
-      <> "\n"
-      <> Text.concat source
-      <> "\n```"
+    Text.intercalate
+      "\n"
+      [ cellStart (CellInfo cellId cellType Nothing),
+        "```" <> lang,
+        Text.concat source,
+        "```"
+      ]
 
 cellStart :: CellInfo -> Text
 cellStart cellInfo =
