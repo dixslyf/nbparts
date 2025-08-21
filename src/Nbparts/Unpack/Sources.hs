@@ -4,7 +4,6 @@ import Control.Monad.Error.Class (MonadError, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Ipynb qualified as Ipynb
 import Nbparts.Types qualified as Nbparts
-import Nbparts.Unpack.Error qualified as Nbparts
 import Nbparts.Unpack.Mime qualified as Nbparts
 
 collectSources :: (MonadError Nbparts.UnpackError m, MonadIO m) => FilePath -> FilePath -> Ipynb.Notebook a -> m [Nbparts.CellSource]

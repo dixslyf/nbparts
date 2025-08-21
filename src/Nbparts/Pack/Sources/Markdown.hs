@@ -11,7 +11,6 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Tuple qualified as Tuple
-import Nbparts.Pack.Error qualified as Nbparts
 import Nbparts.Pack.Mime qualified as Nbparts.Mime
 import Nbparts.Types qualified as Nbparts
 import Nbparts.Util.Markdown qualified

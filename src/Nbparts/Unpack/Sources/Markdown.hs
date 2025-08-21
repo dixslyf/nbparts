@@ -11,7 +11,6 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Nbparts.Types qualified as Nbparts
-import Nbparts.Unpack.Error qualified as Nbparts
 import Nbparts.Util.Map qualified
 import Nbparts.Util.Markdown qualified
 

@@ -1,7 +1,6 @@
 module Nbparts.Types.Metadata
   ( NotebookMetadata (..),
     CellMetadata (..),
-    CellMetadataTag (..),
   )
 where
 
@@ -24,9 +23,6 @@ data CellMetadata
   = CodeCellMetadata {executionCount :: Maybe Int, genericMetadata :: Ipynb.JSONMeta}
   | GenericCellMetadata Ipynb.JSONMeta
   deriving (Generic, Show)
-
--- For error reporting.
-data CellMetadataTag = CodeCellMetadataTag | GenericCellMetadataTag
 
 instance Aeson.ToJSON NotebookMetadata
 

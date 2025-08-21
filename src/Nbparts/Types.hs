@@ -8,6 +8,7 @@ module Nbparts.Types
     module Nbparts.Types.Outputs,
     module Nbparts.Types.Metadata,
     module Nbparts.Types.Mime,
+    module Nbparts.Types.Error,
     SomeNotebook (..),
     withSomeNotebook,
   )
@@ -16,6 +17,7 @@ where
 import Control.Applicative (Alternative ((<|>)))
 import Data.Aeson qualified as Aeson
 import Data.Ipynb qualified as Ipynb
+import Nbparts.Types.Error
 import Nbparts.Types.Manifest
 import Nbparts.Types.Metadata
 import Nbparts.Types.Mime

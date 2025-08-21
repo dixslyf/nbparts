@@ -16,8 +16,6 @@ import Data.Text.IO qualified as TIO
 import Data.Text.IO qualified as Text
 import Data.Yaml qualified as Yaml
 import Nbparts.Types qualified as Nbparts
-import Nbparts.Unpack.Error (UnpackError (UnpackUnsupportedNotebookFormat))
-import Nbparts.Unpack.Error qualified as Nbparts
 import Nbparts.Unpack.Metadata qualified as Nbparts
 import Nbparts.Unpack.Outputs qualified as Nbparts
 import Nbparts.Unpack.Sources qualified as Nbparts
@@ -29,15 +27,12 @@ import Text.Libyaml qualified as Libyaml
 minNotebookFormat :: (Int, Int)
 minNotebookFormat = (4, 0)
 
-recommendedNotebookFormat :: (Int, Int)
-recommendedNotebookFormat = (4, 5)
-
 data UnpackOptions = UnpackOptions
   { notebook :: FilePath,
     sourcesFormat :: Nbparts.Format
   }
 
-unpack :: (MonadError UnpackError m, MonadIO m) => UnpackOptions -> m ()
+unpack :: (MonadError Nbparts.UnpackError m, MonadIO m) => UnpackOptions -> m ()
 unpack (UnpackOptions notebookPath sourcesFormat) = do
   notebookContents <- liftIO $ TIO.readFile notebookPath
 
@@ -59,7 +54,7 @@ unpack (UnpackOptions notebookPath sourcesFormat) = do
 
   -- Check notebook version.
   let format = withNb Nbparts.extractNotebookVersion
-  Monad.when (format < minNotebookFormat) $ throwError (UnpackUnsupportedNotebookFormat format)
+  Monad.when (format < minNotebookFormat) $ throwError (Nbparts.UnpackUnsupportedNotebookFormat format)
 
   -- Collect sources, metadata and outputs.
   let manifest = Nbparts.mkManifest sourcesFormat

@@ -6,14 +6,12 @@ import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
 import Data.Text (Text)
 import Nbparts.Types qualified as Nbparts
-import Nbparts.Unpack.Error (UnpackError)
-import Nbparts.Unpack.Error qualified as Nbparts
 import Nbparts.Unpack.Mime qualified as Nbparts
 
-collectOutputs :: Ipynb.Notebook a -> Either UnpackError (Nbparts.NotebookOutputs a)
+collectOutputs :: Ipynb.Notebook a -> Either Nbparts.UnpackError (Nbparts.NotebookOutputs a)
 collectOutputs (Ipynb.Notebook _meta _format cells) = Nbparts.NotebookOutputs . Map.fromList <$> sequence (Maybe.mapMaybe toEntry cells)
   where
-    toEntry :: Ipynb.Cell a -> Maybe (Either UnpackError (Text, [Ipynb.Output a]))
+    toEntry :: Ipynb.Cell a -> Maybe (Either Nbparts.UnpackError (Text, [Ipynb.Output a]))
     toEntry (Ipynb.Cell (Ipynb.Code _exeCount outputs) maybeCellId _ _ _) = Just $ case maybeCellId of
       Just cellId -> Right (cellId, outputs)
       Nothing -> Left Nbparts.UnpackMissingCellIdError

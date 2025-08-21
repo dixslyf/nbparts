@@ -5,7 +5,6 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Coerce (coerce)
 import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
-import Nbparts.Pack.Error qualified as Nbparts
 import Nbparts.Pack.Mime qualified as Nbparts
 import Nbparts.Types qualified as Nbparts
 

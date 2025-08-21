@@ -13,8 +13,6 @@ import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
 import Data.Text.IO qualified as Text
 import Data.Yaml qualified as Yaml
-import Nbparts.Pack.Error (PackError)
-import Nbparts.Pack.Error qualified as Nbparts
 import Nbparts.Pack.Metadata qualified as Nbparts
 import Nbparts.Pack.Outputs qualified as Nbparts
 import Nbparts.Pack.Sources qualified as Nbparts
@@ -28,7 +26,7 @@ data PackOptions = PackOptions
     outputPath :: Maybe FilePath
   }
 
-pack :: (MonadError PackError m, MonadIO m) => PackOptions -> m ()
+pack :: (MonadError Nbparts.PackError m, MonadIO m) => PackOptions -> m ()
 pack (PackOptions nbpartsDir maybeOutputPath) = do
   -- `nbpartsDir` should be in the form "some_notebook.ipynb.nbparts".
   let fallbackOutputPath = FilePath.dropExtension nbpartsDir
