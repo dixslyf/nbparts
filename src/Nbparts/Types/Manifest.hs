@@ -8,17 +8,15 @@ where
 
 import Data.Aeson (Options (constructorTagModifier))
 import Data.Aeson qualified as Aeson
-import Data.Text (Text)
-import Data.Text qualified as Text
-import Data.Version qualified
+import Data.Version (Version)
 import GHC.Generics (Generic)
 import Paths_nbparts qualified
 
-currentNbpartsVersion :: Text
-currentNbpartsVersion = Text.pack $ Data.Version.showVersion Paths_nbparts.version
+currentNbpartsVersion :: Version
+currentNbpartsVersion = Paths_nbparts.version
 
 data Manifest = Manifest
-  { nbpartsVersion :: Text,
+  { nbpartsVersion :: Version,
     sourcesFormat :: Format
   }
   deriving (Generic, Show, Eq, Ord)
