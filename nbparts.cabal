@@ -82,3 +82,30 @@ executable nbparts
         optparse-applicative ^>=0.19.0.0
     hs-source-dirs: app
     default-language: GHC2021
+
+test-suite test-nbparts
+    import: warnings, extensions
+    type: exitcode-stdio-1.0
+    main-is: Spec.hs
+    hs-source-dirs: tests
+    build-depends:
+        nbparts,
+        base ^>=4.19.2.0,
+        text ^>=2.1.1,
+        containers ^>=0.7,
+        hspec ^>=2.11.12,
+        hedgehog ^>=1.5,
+        hspec-hedgehog ^>=0.3.0.0,
+        registry-hedgehog-aeson ^>=0.3.1.2,
+        aeson ^>=2.2.3.0,
+        yaml ^>=0.11.11.2,
+        ipynb ^>=0.2,
+        mime-types ^>= 0.1.2.0
+    other-modules:
+        Tests.Types.ManifestSpec,
+        Tests.Types.MetadataSpec,
+        Tests.Types.SourcesSpec,
+        Tests.Types.OutputsSpec,
+        Tests.Types.MimeSpec,
+    default-language: GHC2021
+    build-tool-depends: hspec-discover:hspec-discover ^>=2.11.12
