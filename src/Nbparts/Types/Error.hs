@@ -41,12 +41,16 @@ instance Megaparsec.ShowErrorComponent ParseMarkdownSourcesError where
 renderError :: NbpartsError -> Text
 renderError err = case err of
   UnpackError (UnpackJSONDecodeError message) -> "Failed to parse notebook: " <> message
-  UnpackError (UnpackUnsupportedNotebookFormat (major, minor)) -> "Unsupported notebook format: " <> Text.show major <> "." <> Text.show minor
+  UnpackError (UnpackUnsupportedNotebookFormat (major, minor)) ->
+    "Unsupported notebook format: "
+      <> Text.pack (show major)
+      <> "."
+      <> Text.pack (show minor)
   UnpackError UnpackMissingCellIdError ->
     "Notebook contains cell(s) without an identifier. Try upgrading your notebook to at least version "
-      <> Text.show (fst recommendedNotebookFormat)
+      <> Text.pack (show $ fst recommendedNotebookFormat)
       <> "."
-      <> Text.show (snd recommendedNotebookFormat)
+      <> Text.pack (show $ snd recommendedNotebookFormat)
       <> "."
   UnpackError (UnpackMissingCellAttachmentError cellId attachmentName) ->
     "Could not find attachment \""
@@ -54,7 +58,11 @@ renderError err = case err of
       <> "\" for cell \""
       <> cellId
       <> "\""
-  PackError (PackUnsupportedNotebookFormat (major, minor)) -> "Unsupported notebook format: " <> Text.show major <> "." <> Text.show minor
+  PackError (PackUnsupportedNotebookFormat (major, minor)) ->
+    "Unsupported notebook format: "
+      <> Text.pack (show major)
+      <> "."
+      <> Text.pack (show minor)
   PackError (PackParseManifestError parseErr) -> "Failed to parse manifest: " <> Text.pack (Exception.displayException parseErr)
   PackError (PackParseYamlSourcesError parseErr) -> "Failed to parse sources: " <> Text.pack (Exception.displayException parseErr)
   PackError (PackParseMarkdownSourcesError errBundle) -> Text.pack $ Megaparsec.errorBundlePretty errBundle
