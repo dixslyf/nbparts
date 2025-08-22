@@ -21,13 +21,13 @@ data Manifest = Manifest
   { nbpartsVersion :: Text,
     sourcesFormat :: Format
   }
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 
 mkManifest :: Format -> Manifest
 mkManifest = Manifest currentNbpartsVersion
 
 data Format = FormatYaml | FormatMarkdown
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 
 instance Aeson.ToJSON Manifest where
   toJSON = Aeson.genericToJSON jsonOptions

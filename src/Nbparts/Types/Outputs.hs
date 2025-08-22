@@ -16,10 +16,10 @@ import GHC.Generics (Generic)
 import Nbparts.Types.Mime (UnembeddedMimeBundle)
 
 newtype NotebookOutputs a = NotebookOutputs (Map Text [Ipynb.Output a]) -- Map of Cell IDs to outputs.
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq)
 
 newtype UnembeddedNotebookOutputs = UnembeddedNotebookOutputs (Map Text [UnembeddedCellOutput])
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 
 data UnembeddedCellOutput
   = Stream
@@ -40,7 +40,7 @@ data UnembeddedCellOutput
         value :: Text,
         traceback :: [Text]
       }
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 
 instance (Aeson.ToJSON (Ipynb.Output a)) => Aeson.ToJSON (NotebookOutputs a)
 

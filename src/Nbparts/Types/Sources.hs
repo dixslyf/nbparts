@@ -21,20 +21,20 @@ data CellSource = CellSource
     lines :: [Text],
     attachments :: Maybe UnembeddedMimeAttachments
   }
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 
 data CellType = Markdown | Raw | Code
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 
 data CellMarker = CellMarker
   { cellId :: Text,
     cellType :: CellType,
     attachmentNames :: Maybe AttachmentNames
   }
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 
 newtype AttachmentNames = AttachmentNames (Map ExtractedAttachmentFilePath AttachmentName)
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 
 type ExtractedAttachmentFilePath = Text
 

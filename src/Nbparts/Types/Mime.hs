@@ -12,13 +12,13 @@ import Data.Text (Text)
 import GHC.Generics (Generic)
 
 newtype UnembeddedMimeAttachments = UnembeddedMimeAttachments (Map Text UnembeddedMimeBundle)
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 
 newtype UnembeddedMimeBundle = UnembeddedMimeBundle (Map Text UnembeddedMimeData)
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 
 data UnembeddedMimeData = BinaryData FilePath | TextualData Text | JsonData Aeson.Value
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 
 instance Aeson.ToJSON UnembeddedMimeAttachments
 

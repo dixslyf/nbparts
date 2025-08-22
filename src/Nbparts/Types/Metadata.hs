@@ -17,12 +17,12 @@ data NotebookMetadata = NotebookMetadata
     toplevel :: Ipynb.JSONMeta,
     cells :: Map Text CellMetadata -- Map of Cell IDs to attributes.
   }
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 
 data CellMetadata
   = CodeCellMetadata {executionCount :: Maybe Int, genericMetadata :: Ipynb.JSONMeta}
   | GenericCellMetadata Ipynb.JSONMeta
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 
 instance Aeson.ToJSON NotebookMetadata
 
