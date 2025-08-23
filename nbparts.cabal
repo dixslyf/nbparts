@@ -102,6 +102,7 @@ test-suite test-nbparts
         ipynb ^>=0.2,
         mime-types ^>= 0.1.2.0
     other-modules:
+        Tests.SpecHook,
         Tests.Types.ManifestSpec,
         Tests.Types.MetadataSpec,
         Tests.Types.SourcesSpec,
@@ -110,3 +111,4 @@ test-suite test-nbparts
         Tests.Util.TextSpec
     build-tool-depends: hspec-discover:hspec-discover ^>=2.11.12
     default-language: GHC2021
+    ghc-options: -threaded
