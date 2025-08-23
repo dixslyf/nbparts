@@ -1,26 +1,55 @@
 module Nbparts.Util.Text where
 
+import Control.Monad qualified as Monad
 import Data.Text (Text)
 import Data.Text qualified as Text
 
-lineColToIndex :: [Text] -> Int -> Int -> Int
-lineColToIndex textLines line col =
-  let linesBefore = take (line - 1) textLines
-      -- +1 for each newline that `Text.lines` removed
-      charsBefore = sum (map ((+ 1) . Text.length) linesBefore)
-   in charsBefore + (col - 1)
+lineColToIndex :: [Text] -> Int -> Int -> Maybe Int
+lineColToIndex textLines line col
+  | line <= 0 || col <= 0 = Nothing
+  | otherwise = go 1 0 textLines
+  where
+    go :: Int -> Int -> [Text] -> Maybe Int
+    go _ _ [] = Nothing -- Not enough lines.
+    go currentLine charsBefore (l : ls)
+      | currentLine == line =
+          if col <= Text.length l
+            then Just $ charsBefore + col - 1
+            else Nothing
+      | otherwise =
+          -- +1 to `Text.length l` for the newline `Text.lines` removed
+          go (currentLine + 1) (charsBefore + Text.length l + 1) ls
 
--- NOTE: Assumes indices do not overlap.
-replaceSlices :: Text -> [((Int, Int), Text)] -> Text
+-- NOTE: Returns Nothing when slices overlap.
+replaceSlices :: Text -> [((Int, Int), Text)] -> Maybe Text
 replaceSlices input = go 0
   where
-    go :: Int -> [((Int, Int), Text)] -> Text
-    go pos [] =
-      Text.drop pos input
-    go pos (((start, end), replacement) : rs) =
-      let before = Text.take (start - pos) (Text.drop pos input)
-          after = go end rs
-       in before <> replacement <> after
+    go :: Int -> [((Int, Int), Text)] -> Maybe Text
+    go pos [] = Just $ Text.drop pos input
+    go pos (((start, end), replacement) : rs) = do
+      -- Bounds checking.
+      Monad.unless
+        ( start >= 0
+            && end >= 0
+            && start <= end
+            && start >= pos
+        )
+        Nothing
+
+      let current = Text.drop pos input
+          relStart = start - pos
+          relEnd = end - pos
+
+      let (before, remainder) = Text.splitAt relStart current
+
+      -- If the length of the replaced text we got is less than
+      -- the expected length of `relEnd - relStart`, that means
+      -- the indices are out of range.
+      let replaced = Text.take (relEnd - relStart) remainder
+      Monad.when (Text.length replaced < relEnd - relStart) Nothing
+
+      after <- go end rs
+      Just $ before <> replacement <> after
 
 splitKeepNewlines :: Text -> [Text]
 splitKeepNewlines txt

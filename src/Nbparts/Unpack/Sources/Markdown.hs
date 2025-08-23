@@ -27,7 +27,8 @@ sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Markdown source m
   (fixedMdText, maybeAttachmentNames) <- case maybeAttachments of
     Just attachments -> do
       (attachmentFixes, attachmentNames@(Nbparts.AttachmentNames innerAttachmentNames)) <- collectAttachmentFixes cellId attachments mdTree
-      let fixedMdText = Nbparts.Util.Markdown.replaceSlices mdText attachmentFixes
+      -- Safety: `collectAttachmentFixes` should always give valid replacement indices.
+      let fixedMdText = Maybe.fromJust $ Nbparts.Util.Markdown.replaceSlices mdText attachmentFixes
       pure (fixedMdText, if Map.null innerAttachmentNames then Nothing else Just attachmentNames)
     Nothing -> pure (mdText, Nothing)
   pure $ cellStart (Nbparts.CellMarker cellId cellType maybeAttachmentNames) <> "\n" <> fixedMdText

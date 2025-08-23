@@ -94,7 +94,8 @@ fixAttachments maybeAttachmentNames mdText = do
     Just attachmentNames ->
       let mdTree = CMarkGFM.commonmarkToNode [CMarkGFM.optSourcePos] [] mdText
           attachmentFixes = collectAttachmentFixes attachmentNames mdTree
-       in Nbparts.Util.Markdown.replaceSlices mdText attachmentFixes
+       in -- Safety: `collectAttachmentFixes` should always give valid replacement indices.
+          Maybe.fromJust $ Nbparts.Util.Markdown.replaceSlices mdText attachmentFixes
     Nothing -> mdText
 
 collectAttachmentFixes ::

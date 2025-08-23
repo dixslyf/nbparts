@@ -1,19 +1,19 @@
 module Nbparts.Util.Markdown where
 
 import CMarkGFM qualified
-import Data.Bifunctor qualified
+import Data.Functor ((<&>))
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Nbparts.Util.Text qualified
 
-posInfoToIndices :: [Text] -> CMarkGFM.PosInfo -> (Int, Int)
+posInfoToIndices :: [Text] -> CMarkGFM.PosInfo -> Maybe (Int, Int)
 posInfoToIndices mdLines (CMarkGFM.PosInfo startLine startColumn endLine endColumn) =
-  ( Nbparts.Util.Text.lineColToIndex mdLines startLine startColumn,
-    Nbparts.Util.Text.lineColToIndex mdLines endLine endColumn + 1 -- +1 because endColumn seems to be inclusive, but we want exclusive.
-  )
+  (,)
+    <$> Nbparts.Util.Text.lineColToIndex mdLines startLine startColumn
+    <*> (Nbparts.Util.Text.lineColToIndex mdLines endLine endColumn <&> (+ 1)) -- +1 because endColumn is inclusive, but we want exclusive.
 
-replaceSlices :: Text -> [(CMarkGFM.PosInfo, Text)] -> Text
+replaceSlices :: Text -> [(CMarkGFM.PosInfo, Text)] -> Maybe Text
 replaceSlices mdText replacements =
   let mdLines = Text.lines mdText
-      replacements' = map (Data.Bifunctor.first (posInfoToIndices mdLines)) replacements
-   in Nbparts.Util.Text.replaceSlices mdText replacements'
+      replacements' = traverse (\(r, txt) -> (,txt) <$> posInfoToIndices mdLines r) replacements
+   in replacements' >>= Nbparts.Util.Text.replaceSlices mdText
