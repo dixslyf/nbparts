@@ -108,7 +108,8 @@ test-suite test-nbparts
         Tests.Types.SourcesSpec,
         Tests.Types.OutputsSpec,
         Tests.Types.MimeSpec,
-        Tests.Util.TextSpec
+        Tests.Util.TextSpec,
+        Tests.Util.MapSpec
     build-tool-depends: hspec-discover:hspec-discover ^>=2.11.12
     default-language: GHC2021
     ghc-options: -threaded
