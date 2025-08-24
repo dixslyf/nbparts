@@ -12,14 +12,21 @@ spec :: Spec
 spec = do
   describe "lineColToIndex" $ do
     context "when given an empty list" $ do
-      it "returns Nothing" $ do
+      it "returns Nothing" $ hedgehog $ do
         let textLines = []
-        lineColToIndex textLines 0 0 `shouldBe` Nothing
-        lineColToIndex textLines 1 1 `shouldBe` Nothing
-        lineColToIndex textLines 3 3 `shouldBe` Nothing
+        line <- forAll $ Gen.int (Range.linear minBound maxBound)
+        col <- forAll $ Gen.int (Range.linear minBound maxBound)
+        lineColToIndex textLines line col === Nothing
 
-    context "when given a simple case" $ do
-      it "computes the correct index" $ do
+    context "when given a single line with valid line and col" $ do
+      it "returns `col - 1`" $ do
+        textLine <- forAll $ Gen.text (Range.linear 1 50) Gen.unicode
+        let textLines = [textLine]
+        col <- forAll $ Gen.int (Range.linear 1 (Text.length textLine))
+        lineColToIndex textLines 1 col === Just (col - 1)
+
+    context "when given multiple lines with valid line and col" $ do
+      it "computes the correct index for a simple case" $ do
         -- "abc\ndefg\nhijkl"
         let textLines = ["abc", "defg", "hijkl"]
         lineColToIndex textLines 1 1 `shouldBe` Just 0
@@ -27,17 +34,57 @@ spec = do
         lineColToIndex textLines 2 1 `shouldBe` Just 4
         lineColToIndex textLines 3 3 `shouldBe` Just 11
 
-    it "matches indexing into the joined text" $ hedgehog $ do
-      txtLines <- forAll $ Gen.list (Range.linear 1 10) (Gen.text (Range.linear 1 100) Gen.unicode)
+      it "returns an index whose letter is equal to the one retrieved using the line-col index" $ hedgehog $ do
+        textLines <-
+          forAll $
+            Gen.list
+              (Range.linear 1 5)
+              (Gen.text (Range.linear 1 50) Gen.unicode)
 
-      line <- forAll $ Gen.int (Range.linear 1 (length txtLines))
-      let txtLine = txtLines !! (line - 1)
+        line <- forAll $ Gen.int (Range.linear 1 (length textLines))
+        let textLine = textLines !! (line - 1)
 
-      col <- forAll $ Gen.int (Range.linear 1 (Text.length txtLine))
+        col <- forAll $ Gen.int (Range.linear 1 (Text.length textLine))
+        let letter = Text.index textLine (col - 1)
 
-      let joined = Text.intercalate "\n" txtLines
-          idx = lineColToIndex txtLines line col
-      (Text.index joined <$> idx) === Just (Text.index txtLine (col - 1))
+        let text = Text.intercalate "\n" textLines
+        let maybeIdx = lineColToIndex textLines line col
+        let letter' = Text.index text <$> maybeIdx
+
+        Just letter === letter'
+
+    context "when given non-positive indices" $ do
+      it "returns Nothing" $ hedgehog $ do
+        textLines <-
+          forAll $
+            Gen.list
+              (Range.linear 1 5)
+              (Gen.text (Range.linear 1 50) Gen.unicode)
+        line <- forAll $ Gen.int (Range.linear (-100) 0)
+        col <- forAll $ Gen.int (Range.linear (-100) 0)
+        lineColToIndex textLines line col === Nothing
+
+    context "when given out-of-range line" $ do
+      it "returns Nothing" $ hedgehog $ do
+        textLines <-
+          forAll $
+            Gen.list
+              (Range.linear 1 5)
+              (Gen.text (Range.linear 1 50) Gen.unicode)
+        line <- forAll $ Gen.int (Range.linear (length textLines + 1) 1000)
+        lineColToIndex textLines line 1 === Nothing
+
+    context "when given out-of-range col" $ do
+      it "returns Nothing" $ hedgehog $ do
+        textLines <-
+          forAll $
+            Gen.list
+              (Range.linear 1 5)
+              (Gen.text (Range.linear 1 50) Gen.unicode)
+        line <- forAll $ Gen.int (Range.linear 1 (length textLines))
+        let textLine = textLines !! (line - 1)
+        col <- forAll $ Gen.int (Range.linear (Text.length textLine + 1) 1000)
+        lineColToIndex textLines line col === Nothing
 
   describe "replaceSlices" $ do
     context "when given no replacements" $ do
