@@ -30,6 +30,12 @@ unpackOptionsParser =
           <> OA.help "Output format for sources"
           <> OA.value Nbparts.FormatYaml
       )
+    <*> OA.optional
+      ( OA.strOption $
+          OA.short 'o'
+            <> OA.metavar "OUTPUT_PATH"
+            <> OA.help "Directory to write the unpacked notebook to"
+      )
 
 packOptionsParser :: OA.Parser Nbparts.PackOptions
 packOptionsParser =

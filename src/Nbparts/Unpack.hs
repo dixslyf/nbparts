@@ -29,14 +29,15 @@ minNotebookFormat = (4, 0)
 
 data UnpackOptions = UnpackOptions
   { notebook :: FilePath,
-    sourcesFormat :: Nbparts.Format
+    sourcesFormat :: Nbparts.Format,
+    outputPath :: Maybe FilePath
   }
 
 unpack :: (MonadError Nbparts.UnpackError m, MonadIO m) => UnpackOptions -> m ()
-unpack (UnpackOptions notebookPath sourcesFormat) = do
+unpack (UnpackOptions notebookPath sourcesFormat outputPath) = do
   notebookContents <- liftIO $ TIO.readFile notebookPath
 
-  let exportDirectory = notebookPath <.> "nbparts"
+  let exportDirectory = Maybe.fromMaybe (notebookPath <.> "nbparts") outputPath
   let sourceMediaSubdir = "media"
   let outputMediaSubdir = "outputs-media"
   liftIO $ do
