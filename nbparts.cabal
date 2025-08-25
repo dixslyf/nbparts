@@ -100,7 +100,8 @@ test-suite test-nbparts
         aeson ^>=2.2.3.0,
         yaml ^>=0.11.11.2,
         ipynb ^>=0.2,
-        mime-types ^>= 0.1.2.0
+        mime-types ^>= 0.1.2.0,
+        cmark-gfm ^>=0.2.6
     other-modules:
         Tests.SpecHook,
         Tests.Types.ManifestSpec,
@@ -109,7 +110,8 @@ test-suite test-nbparts
         Tests.Types.OutputsSpec,
         Tests.Types.MimeSpec,
         Tests.Util.TextSpec,
-        Tests.Util.MapSpec
+        Tests.Util.MapSpec,
+        Tests.Util.MarkdownSpec
     build-tool-depends: hspec-discover:hspec-discover ^>=2.11.12
     default-language: GHC2021
     ghc-options: -threaded
