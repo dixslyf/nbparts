@@ -18,7 +18,7 @@ unpackOptionsParser =
     <*> OA.option
       parseSourcesFormat
       ( OA.short 's'
-          <> OA.long "source-format"
+          <> OA.long "sources-format"
           <> OA.metavar "yaml|markdown"
           <> OA.help "Output format for sources"
           <> OA.value Nbparts.FormatYaml
