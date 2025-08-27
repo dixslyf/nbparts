@@ -70,7 +70,7 @@ parseCodeBlock = do
 
 parseOtherCell :: Parser Text
 parseOtherCell = do
-  body <- Text.pack <$> P.manyTill P.anySingle (P.lookAhead (Monad.void parseCellInfo <|> P.eof))
+  body <- Text.pack <$> P.manyTill P.anySingle (P.lookAhead (Monad.void (P.try parseCellInfo) <|> P.eof))
   -- Again, removing the trailing two newlines. Since parsing non-code blocks only stops
   -- when encountering the <!-- nbparts:cell ... --> comment, the parsed text contains the
   -- newlines, so we have to remove them using plain text functions instead of Megaparsec.
