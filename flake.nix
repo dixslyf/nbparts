@@ -28,16 +28,25 @@
                 pkgs.cabal-install
                 hls
                 pkgs.ormolu
-                pkgs.pkg-config
-                pkgs.zlib
 
-                pkgs.python3Packages.jupyterlab
+                (pkgs.python3.withPackages (
+                  ps: with ps; [
+                    jupyterlab
+                    matplotlib
+                    pillow
+                    ipympl
+                  ]
+                ))
+
                 pkgs.nodePackages.json-diff
               ];
             in
             {
               inherit packages;
-              LD_LIBRARY_PATH = lib.makeLibraryPath packages;
+              LD_LIBRARY_PATH = lib.makeLibraryPath [
+                pkgs.pkg-config
+                pkgs.zlib
+              ];
             }
           );
         };
