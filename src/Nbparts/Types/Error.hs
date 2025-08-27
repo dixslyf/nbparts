@@ -9,7 +9,7 @@ import Text.Megaparsec qualified as Megaparsec
 recommendedNotebookFormat :: (Int, Int)
 recommendedNotebookFormat = (4, 5)
 
-data NbpartsError = UnpackError UnpackError | PackError PackError
+data Error = UnpackError UnpackError | PackError PackError
 
 data UnpackError
   = UnpackJSONDecodeError Text
@@ -38,7 +38,7 @@ instance Megaparsec.ShowErrorComponent ParseMarkdownSourcesError where
   showErrorComponent (ParseMarkdownSourcesJsonError msg) =
     "Invalid JSON in nbparts cell: " <> Text.unpack msg
 
-renderError :: NbpartsError -> Text
+renderError :: Error -> Text
 renderError err = case err of
   UnpackError (UnpackJSONDecodeError message) -> "Failed to parse notebook: " <> message
   UnpackError (UnpackUnsupportedNotebookFormat (major, minor)) ->

@@ -25,6 +25,7 @@ common extensions
 library
     import: warnings, extensions
     exposed-modules:
+        Nbparts.Run,
         Nbparts.Types,
         Nbparts.Types.Manifest,
         Nbparts.Types.Sources,
