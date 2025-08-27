@@ -10,12 +10,14 @@ recommendedNotebookFormat :: (Int, Int)
 recommendedNotebookFormat = (4, 5)
 
 data Error = UnpackError UnpackError | PackError PackError
+  deriving (Show)
 
 data UnpackError
   = UnpackJSONDecodeError Text
   | UnpackUnsupportedNotebookFormat (Int, Int)
   | UnpackMissingCellIdError
   | UnpackMissingCellAttachmentError {cellId :: Text, attachmentName :: Text}
+  deriving (Show)
 
 data PackError
   = PackUnsupportedNotebookFormat (Int, Int)
@@ -28,11 +30,13 @@ data PackError
   | PackMissingCellMetadataError Text
   | PackMissingCellOutputsError Text
   | PackCellMetadataTypeMismatch {expected :: CellMetadataTag, actual :: CellMetadataTag}
+  deriving (Show)
 
 newtype ParseMarkdownSourcesError = ParseMarkdownSourcesJsonError Text
   deriving (Show, Eq, Ord)
 
 data CellMetadataTag = CodeCellMetadataTag | GenericCellMetadataTag
+  deriving (Show)
 
 instance Megaparsec.ShowErrorComponent ParseMarkdownSourcesError where
   showErrorComponent (ParseMarkdownSourcesJsonError msg) =
