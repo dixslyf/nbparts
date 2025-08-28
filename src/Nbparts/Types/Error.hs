@@ -16,7 +16,6 @@ data UnpackError
   = UnpackParseNotebookError Text
   | UnpackUnsupportedNotebookFormat (Int, Int)
   | UnpackMissingCellIdError
-  | UnpackMissingCellAttachmentError {cellId :: Text, attachmentName :: Text}
   deriving (Show, Eq)
 
 data PackError
@@ -60,12 +59,6 @@ renderError err = case err of
       <> "."
       <> Text.pack (show $ snd recommendedNotebookFormat)
       <> "."
-  UnpackError (UnpackMissingCellAttachmentError cellId attachmentName) ->
-    "Could not find attachment \""
-      <> attachmentName
-      <> "\" for cell \""
-      <> cellId
-      <> "\""
   PackError (PackUnsupportedNotebookFormat (major, minor)) ->
     "Unsupported notebook format: "
       <> Text.pack (show major)

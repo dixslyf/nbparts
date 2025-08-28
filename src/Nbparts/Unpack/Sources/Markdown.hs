@@ -1,7 +1,6 @@
 module Nbparts.Unpack.Sources.Markdown where
 
 import CMarkGFM qualified
-import Control.Monad.Error.Class (MonadError (throwError))
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Foldable (foldl')
@@ -26,10 +25,16 @@ sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Markdown source m
   let mdTree = CMarkGFM.commonmarkToNode [CMarkGFM.optSourcePos] [] mdText
   (fixedMdText, maybeAttachmentNames) <- case maybeAttachments of
     Just attachments -> do
-      (attachmentFixes, attachmentNames@(Nbparts.AttachmentNames innerAttachmentNames)) <- collectAttachmentFixes cellId attachments mdTree
+      let (attachmentFixes, Nbparts.AttachmentNames attachmentNames) = collectAttachmentFixes attachments mdTree
       -- Safety: `collectAttachmentFixes` should always give valid replacement indices.
       let fixedMdText = Maybe.fromJust $ Nbparts.Util.Markdown.replaceSlices mdText attachmentFixes
-      pure (fixedMdText, if Map.null innerAttachmentNames then Nothing else Just attachmentNames)
+      pure
+        ( fixedMdText,
+          if Map.null attachmentNames
+            then
+              Nothing
+            else Just $ Nbparts.AttachmentNames attachmentNames
+        )
     Nothing -> pure (mdText, Nothing)
   pure $ cellStart (Nbparts.CellMarker cellId cellType maybeAttachmentNames) <> "\n" <> fixedMdText
 sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Raw source _) =
@@ -70,19 +75,16 @@ escapeCellInfo = Text.replace "-->" "-\\->" . Text.replace "\\" "\\\\"
 -- and what to replace them by before performing the replacement using plain text manipulation.
 -- That way, we leave everything else untouched.
 collectAttachmentFixes ::
-  Text ->
   Nbparts.UnembeddedMimeAttachments ->
   CMarkGFM.Node ->
-  Either Nbparts.UnpackError ([(CMarkGFM.PosInfo, Text)], Nbparts.AttachmentNames)
+  ([(CMarkGFM.PosInfo, Text)], Nbparts.AttachmentNames)
 collectAttachmentFixes
-  cellId
   (Nbparts.UnembeddedMimeAttachments attachments)
   (CMarkGFM.Node maybePosInfo (CMarkGFM.IMAGE url title) children)
-    | Text.isPrefixOf "attachment:" url = do
+    | Text.isPrefixOf "attachment:" url =
         -- Safety: The guard already guarantees that "attachment:" is a prefix.
         let attachmentName = Maybe.fromJust $ Text.stripPrefix "attachment:" url
-
-        let maybeAttachmentFp = do
+            maybeAttachmentFp = do
               (Nbparts.UnembeddedMimeBundle mimeBundle) <- Map.lookup attachmentName attachments
 
               -- The mime bundle should only have 1 entry, but just in case it doesn't,
@@ -91,23 +93,22 @@ collectAttachmentFixes
               case mimedata of
                 Nbparts.BinaryData fp -> pure fp
                 _ -> Nothing
+         in case maybeAttachmentFp of
+              Just fp ->
+                let attachmentFp = Text.pack fp
+                    -- Safety: We should have parsed with the CMarkGFM.optSourcePos extension,
+                    -- so position information should be available.
+                    posInfo = Maybe.fromJust maybePosInfo
 
-        attachmentFp <- case maybeAttachmentFp of
-          Just fp -> pure $ Text.pack fp
-          Nothing -> throwError $ Nbparts.UnpackMissingCellAttachmentError cellId attachmentName
-
-        -- Safety: We should have parsed with the CMarkGFM.optSourcePos extension,
-        -- so position information should be available.
-        let posInfo = Maybe.fromJust maybePosInfo
-
-        let fixedImageNode = CMarkGFM.Node Nothing (CMarkGFM.IMAGE attachmentFp title) children
-        let fixedImageNodeText = Text.strip $ CMarkGFM.nodeToCommonmark [] Nothing fixedImageNode
-
-        pure ([(posInfo, fixedImageNodeText)], Nbparts.AttachmentNames $ Map.singleton attachmentFp attachmentName)
-collectAttachmentFixes cellId attachments (CMarkGFM.Node _ _ children) =
+                    fixedImageNode = CMarkGFM.Node Nothing (CMarkGFM.IMAGE attachmentFp title) children
+                    fixedImageNodeText = Text.strip $ CMarkGFM.nodeToCommonmark [] Nothing fixedImageNode
+                 in ([(posInfo, fixedImageNodeText)], Nbparts.AttachmentNames $ Map.singleton attachmentFp attachmentName)
+              -- TODO: Should warn if Nothing
+              Nothing -> ([], Nbparts.AttachmentNames Map.empty)
+collectAttachmentFixes attachments (CMarkGFM.Node _ _ children) =
   foldl'
     (\(ps, Nbparts.AttachmentNames m) (accPs, Nbparts.AttachmentNames accM) -> (ps ++ accPs, Nbparts.AttachmentNames $ Map.union m accM))
     ([], Nbparts.AttachmentNames Map.empty)
-    <$> unmergedFixes
+    unmergedFixes
   where
-    unmergedFixes = traverse (collectAttachmentFixes cellId attachments) children
+    unmergedFixes = map (collectAttachmentFixes attachments) children
