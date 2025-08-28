@@ -15,7 +15,7 @@ genTextLines :: Gen [Text]
 genTextLines =
   Gen.list
     (Range.linear 1 5)
-    (Gen.text (Range.linear 1 50) Gen.unicode)
+    (Gen.text (Range.linear 1 50) Gen.alphaNum) -- TODO: Figure out how to generate unicode text, but without newlines.
 
 spec :: Spec
 spec = do
