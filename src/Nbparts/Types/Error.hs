@@ -13,7 +13,7 @@ data Error = UnpackError UnpackError | PackError PackError
   deriving (Show, Eq)
 
 data UnpackError
-  = UnpackJSONDecodeError Text
+  = UnpackParseNotebookError Text
   | UnpackUnsupportedNotebookFormat (Int, Int)
   | UnpackMissingCellIdError
   | UnpackMissingCellAttachmentError {cellId :: Text, attachmentName :: Text}
@@ -48,7 +48,7 @@ instance Megaparsec.ShowErrorComponent ParseMarkdownSourcesError where
 
 renderError :: Error -> Text
 renderError err = case err of
-  UnpackError (UnpackJSONDecodeError message) -> "Failed to parse notebook: " <> message
+  UnpackError (UnpackParseNotebookError message) -> "Failed to parse notebook: " <> message
   UnpackError (UnpackUnsupportedNotebookFormat (major, minor)) ->
     "Unsupported notebook format: "
       <> Text.pack (show major)

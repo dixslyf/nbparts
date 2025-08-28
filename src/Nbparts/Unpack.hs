@@ -49,7 +49,7 @@ unpack (UnpackOptions notebookPath sourcesFormat outputPath) = do
   let notebookBytes = TE.encodeUtf8 notebookContents
   (nb :: Nbparts.SomeNotebook) <-
     liftEither $
-      left (Nbparts.UnpackJSONDecodeError . T.pack) $
+      left (Nbparts.UnpackParseNotebookError . T.pack) $
         Aeson.eitherDecodeStrict notebookBytes
   let withNb = Nbparts.withSomeNotebook nb
 
