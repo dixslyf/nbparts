@@ -110,6 +110,7 @@ test-suite test-nbparts
     other-modules:
         Tests.SpecHook,
         Tests.Integration.UnpackPackSpec,
+        Tests.Integration.UnpackSpec,
         Tests.Integration.Util,
         Tests.Types.ManifestSpec,
         Tests.Types.MetadataSpec,
