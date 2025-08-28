@@ -92,6 +92,8 @@ test-suite test-nbparts
     build-depends:
         nbparts,
         base ^>=4.19.2.0,
+        bytestring ^>=0.12.1.0,
+        mtl ^>=2.3.1,
         text ^>=2.1.1,
         containers ^>=0.7,
         hspec ^>=2.11.12,
@@ -102,9 +104,13 @@ test-suite test-nbparts
         yaml ^>=0.11.11.2,
         ipynb ^>=0.2,
         mime-types ^>= 0.1.2.0,
-        cmark-gfm ^>=0.2.6
+        cmark-gfm ^>=0.2.6,
+        temporary ^>=1.3,
+        filepath ^>=1.4.301.0
     other-modules:
         Tests.SpecHook,
+        Tests.Integration.UnpackPackSpec,
+        Tests.Integration.Util,
         Tests.Types.ManifestSpec,
         Tests.Types.MetadataSpec,
         Tests.Types.SourcesSpec,
