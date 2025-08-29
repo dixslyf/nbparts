@@ -15,24 +15,34 @@ import Network.Mime qualified as Mime
 import System.FilePath ((</>))
 
 unembedMimeAttachments :: FilePath -> FilePath -> Ipynb.MimeAttachments -> IO Nbparts.UnembeddedMimeAttachments
-unembedMimeAttachments dirPrefix subdir = coerce $ fmap Nbparts.UnembeddedMimeAttachments . traverse (unembedMimeBundle dirPrefix subdir)
+unembedMimeAttachments dirPrefix subdir =
+  coerce $
+    fmap Nbparts.UnembeddedMimeAttachments
+      . Map.traverseWithKey
+        (\attName bundle -> unembedMimeBundleWithPrefix (Text.unpack attName <> "-") dirPrefix subdir bundle)
 
-unembedMimeBundle :: FilePath -> FilePath -> Ipynb.MimeBundle -> IO Nbparts.UnembeddedMimeBundle
-unembedMimeBundle dirPrefix subdir =
+unembedMimeBundleWithPrefix :: String -> FilePath -> FilePath -> Ipynb.MimeBundle -> IO Nbparts.UnembeddedMimeBundle
+unembedMimeBundleWithPrefix fpPrefix dirPrefix subdir =
   coerce $
     fmap Nbparts.UnembeddedMimeBundle
       . Map.traverseWithKey
-        (unembedMimeData dirPrefix subdir)
+        (unembedMimeDataWithPrefix fpPrefix dirPrefix subdir)
 
-unembedMimeData :: FilePath -> FilePath -> Ipynb.MimeType -> Ipynb.MimeData -> IO Nbparts.UnembeddedMimeData
-unembedMimeData dirPrefix subdir mimetype (Ipynb.BinaryData bytes) = do
-  let filename = binaryOutputFileName mimetype bytes
+unembedMimeBundle :: FilePath -> FilePath -> Ipynb.MimeBundle -> IO Nbparts.UnembeddedMimeBundle
+unembedMimeBundle = unembedMimeBundleWithPrefix ""
+
+unembedMimeDataWithPrefix :: String -> FilePath -> FilePath -> Ipynb.MimeType -> Ipynb.MimeData -> IO Nbparts.UnembeddedMimeData
+unembedMimeDataWithPrefix fpPrefix dirPrefix subdir mimetype (Ipynb.BinaryData bytes) = do
+  let filename = fpPrefix <> binaryOutputFileName mimetype bytes
   let relPath = subdir </> filename
   let writePath = dirPrefix </> relPath
   ByteString.writeFile writePath bytes
   return $ Nbparts.BinaryData relPath
-unembedMimeData _ _ _ (Ipynb.TextualData text) = pure $ Nbparts.TextualData text
-unembedMimeData _ _ _ (Ipynb.JsonData value) = pure $ Nbparts.JsonData value
+unembedMimeDataWithPrefix _ _ _ _ (Ipynb.TextualData text) = pure $ Nbparts.TextualData text
+unembedMimeDataWithPrefix _ _ _ _ (Ipynb.JsonData value) = pure $ Nbparts.JsonData value
+
+unembedMimeData :: FilePath -> FilePath -> Ipynb.MimeType -> Ipynb.MimeData -> IO Nbparts.UnembeddedMimeData
+unembedMimeData = unembedMimeDataWithPrefix ""
 
 binaryOutputFileName :: Text -> ByteString -> FilePath
 binaryOutputFileName mimetype bytes =

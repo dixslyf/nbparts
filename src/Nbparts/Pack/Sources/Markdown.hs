@@ -10,8 +10,6 @@ import Data.Maybe qualified as Maybe
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
-import Data.Tuple qualified as Tuple
-import Nbparts.Pack.Mime qualified as Nbparts.Mime
 import Nbparts.Types qualified as Nbparts
 import Nbparts.Util.Markdown qualified
 import Nbparts.Util.Text qualified
@@ -29,7 +27,7 @@ parseSources = P.many parseSource
 
 parseSource :: Parser Nbparts.CellSource
 parseSource = do
-  (Nbparts.CellMarker cellId cellType maybeAttachmentNames) <- parseCellInfo
+  (Nbparts.CellMarker cellId cellType maybeAttachments) <- parseCellInfo
 
   -- Try removing the newline added after the <!-- nbparts:cell ... --> comment.
   Monad.void $ P.optional P.newline
@@ -37,18 +35,11 @@ parseSource = do
   srcText <- case cellType of
     Nbparts.Code -> parseCodeOrRawCell
     Nbparts.Raw -> parseCodeOrRawCell
-    Nbparts.Markdown -> fixAttachments maybeAttachmentNames <$> parseOtherCell
+    Nbparts.Markdown -> fixAttachments maybeAttachments <$> parseOtherCell
 
   let src = Nbparts.Util.Text.splitKeepNewlines srcText
 
-  let attachments = do
-        (Nbparts.AttachmentNames attachmentNames) <- maybeAttachmentNames
-        -- We shouldn't have any duplicate keys since the mapping should be one-to-one.
-        -- This is now a mapping from the original attachment names to their corresponding media file paths.
-        let reversed = Map.fromList $ map Tuple.swap (Map.toList attachmentNames)
-        pure $ Nbparts.UnembeddedMimeAttachments (Map.map Nbparts.Mime.mediaPathToMimeBundle reversed)
-
-  pure $ Nbparts.CellSource cellId cellType src attachments
+  pure $ Nbparts.CellSource cellId cellType src maybeAttachments
 
 parseCodeOrRawCell :: Parser Text
 parseCodeOrRawCell = do
@@ -88,35 +79,47 @@ parseCellInfo = do
     Right cellInfo -> pure cellInfo
     Left err -> P.customFailure (Nbparts.ParseMarkdownSourcesJsonError $ Text.pack err)
 
-fixAttachments :: Maybe Nbparts.AttachmentNames -> Text -> Text
-fixAttachments maybeAttachmentNames mdText = do
-  case maybeAttachmentNames of
-    Just attachmentNames ->
+fixAttachments :: Maybe Nbparts.UnembeddedMimeAttachments -> Text -> Text
+fixAttachments maybeAttachments mdText = do
+  case maybeAttachments of
+    Just attachments ->
       let mdTree = CMarkGFM.commonmarkToNode [CMarkGFM.optSourcePos] [] mdText
-          attachmentFixes = collectAttachmentFixes attachmentNames mdTree
+          attachmentFixes = collectAttachmentFixes attachments mdTree
        in -- Safety: `collectAttachmentFixes` should always give valid replacement indices.
           Maybe.fromJust $ Nbparts.Util.Markdown.replaceSlices mdText attachmentFixes
     Nothing -> mdText
 
 collectAttachmentFixes ::
-  Nbparts.AttachmentNames ->
+  Nbparts.UnembeddedMimeAttachments ->
   CMarkGFM.Node ->
   [(CMarkGFM.PosInfo, Text)]
 collectAttachmentFixes
-  (Nbparts.AttachmentNames attachmentNames)
+  attachments
   (CMarkGFM.Node maybePosInfo (CMarkGFM.IMAGE url title) children)
-    | Maybe.isJust $ Map.lookup url attachmentNames =
-        let -- Safety: The guard guarantees that the url is in the map.
-            attachmentName = Maybe.fromJust $ Map.lookup url attachmentNames
-
-            -- Safety: We should have parsed with the CMarkGFM.optSourcePos extension,
+    | Just attachmentName <- findAttachmentNameByFilePath (Text.unpack url) attachments =
+        let -- Safety: We should have parsed with the CMarkGFM.optSourcePos extension,
             -- so position information should be available.
             posInfo = Maybe.fromJust maybePosInfo
 
             fixedImageNode = CMarkGFM.Node Nothing (CMarkGFM.IMAGE ("attachment:" <> attachmentName) title) children
             fixedImageNodeText = Text.strip $ CMarkGFM.nodeToCommonmark [] Nothing fixedImageNode
          in [(posInfo, fixedImageNodeText)]
-collectAttachmentFixes attachments (CMarkGFM.Node _ _ children) = foldMap (collectAttachmentFixes attachments) children
+collectAttachmentFixes attachments (CMarkGFM.Node _ _ children) = concatMap (collectAttachmentFixes attachments) children
+
+findAttachmentNameByFilePath :: FilePath -> Nbparts.UnembeddedMimeAttachments -> Maybe Text
+findAttachmentNameByFilePath targetFp (Nbparts.UnembeddedMimeAttachments attachments) =
+  Map.foldrWithKey go Nothing attachments
+  where
+    go :: Text -> Nbparts.UnembeddedMimeBundle -> Maybe Text -> Maybe Text
+    go attachmentName (Nbparts.UnembeddedMimeBundle bundle) acc =
+      acc
+        <|> if any (matches targetFp) (Map.elems bundle)
+          then Just attachmentName
+          else Nothing
+
+    matches :: FilePath -> Nbparts.UnembeddedMimeData -> Bool
+    matches targetFp' (Nbparts.BinaryData fp) = fp == targetFp'
+    matches _ _ = False
 
 unescapeCellInfo :: Text -> Text
 unescapeCellInfo = Text.replace "\\\\" "\\" . Text.replace "-\\->" "-->"

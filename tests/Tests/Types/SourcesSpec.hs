@@ -9,7 +9,7 @@ import Hedgehog (Gen, forAll, tripping)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Nbparts.Types.Sources
-  ( AttachmentNames (AttachmentNames),
+  (
     CellMarker (CellMarker),
     CellSource (CellSource),
     CellType
@@ -27,16 +27,6 @@ genCellId = Gen.text (Range.linear 16 64) Gen.unicode
 
 genCellType :: Gen CellType
 genCellType = Gen.element [Markdown, Raw, Code]
-
-genAttachmentNames :: Gen AttachmentNames
-genAttachmentNames =
-  AttachmentNames
-    <$> Gen.map
-      (Range.linear 0 3)
-      ( (,)
-          <$> Gen.text (Range.linear 1 100) Gen.unicode
-          <*> Gen.text (Range.linear 1 100) Gen.unicode
-      )
 
 genSentence :: Gen Text
 genSentence =
@@ -77,7 +67,7 @@ genCellMarker =
   CellMarker
     <$> genCellId
     <*> genCellType
-    <*> Gen.maybe genAttachmentNames
+    <*> Gen.maybe genUnembeddedMimeAttachments
 
 spec :: Spec
 spec = do
@@ -89,15 +79,6 @@ spec = do
     it "YAML roundtrip" $ hedgehog $ do
       ct <- forAll genCellType
       tripping ct Yaml.encode (left (const ()) . Yaml.decodeEither')
-
-  describe "AttachmentNames" $ do
-    it "JSON roundtrip" $ hedgehog $ do
-      an <- forAll genAttachmentNames
-      tripping an Aeson.encode Aeson.decode
-
-    it "YAML roundtrip" $ hedgehog $ do
-      an <- forAll genAttachmentNames
-      tripping an Yaml.encode (left (const ()) . Yaml.decodeEither')
 
   describe "CellSource" $ do
     it "JSON roundtrip" $ hedgehog $ do
