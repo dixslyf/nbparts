@@ -59,6 +59,8 @@ library
         filepath ^>=1.4.301.0,
         text ^>=2.1.1,
         bytestring ^>=0.12.1.0,
+        memory ^>=0.18.0,
+        base64-bytestring ^>=1.2.1.0,
         ipynb ^>=0.2,
         containers ^>=0.7,
         aeson ^>=2.2.3.0,
