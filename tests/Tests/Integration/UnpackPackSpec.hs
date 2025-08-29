@@ -76,6 +76,18 @@ runTests fmt = do
   context "when given a notebook with latex" $ do
     testIdentity "latex.ipynb"
 
+  context "when given a notebook with attachments" $
+    testIdentity "attachments.ipynb"
+
+  context "when given a notebook with duplicate attachments" $
+    testIdentity "duplicate-attachments.ipynb"
+
+  context "when given a notebook with a missing attachment" $
+    testIdentity "missing-attachment.ipynb"
+
+  context "when given a notebook with an attachment that has multiple mime bundle entries" $
+    testIdentity "attachments-multiple-mime-bundle-entries.ipynb"
+
 spec :: Spec
 spec = around (withSystemTempDirectory "test-nbparts") $ do
   describe "Unpack then pack" $ do
