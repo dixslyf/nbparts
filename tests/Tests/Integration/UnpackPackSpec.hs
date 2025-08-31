@@ -88,6 +88,9 @@ runTests fmt = do
   context "when given a notebook with a missing attachment" $
     testIdentity "missing-attachment.ipynb"
 
+  context "when given a notebook containing attachments with unusual formatting" $
+    testIdentity "attachments-unusual-formatting.ipynb"
+
   context "when given a notebook with an attachment that has multiple mime bundle entries" $
     testIdentity "attachments-multiple-mime-bundle-entries.ipynb"
 
