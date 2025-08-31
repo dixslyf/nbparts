@@ -43,6 +43,9 @@ parseSource = do
         Left mdErr -> P.customFailure (Nbparts.ParseMarkdownSourcesMarkdownError mdErr)
       let mdLines = Text.lines mdText
 
+      -- Safety: The replacements should be valid because both `commentChangesWith` and `collectAttachmentFixes`
+      -- always give valid replacements.
+      let escapesReplacements = Maybe.fromJust $ Util.Markdown.commentChangesWith unescapeComments mdLines mdAst
       let attachmentReplacements = case maybeAttachments of
             Just attachments ->
               Maybe.fromJust $
@@ -51,9 +54,10 @@ parseSource = do
                   mdLines
                   mdAst
             Nothing -> []
+      let textReplacements = escapesReplacements <> attachmentReplacements
 
       -- Safety: The replacements do not overlap.
-      pure . Maybe.fromJust $ Nbparts.Util.Text.replaceSlices mdText attachmentReplacements
+      pure . Maybe.fromJust $ Nbparts.Util.Text.replaceSlices mdText textReplacements
 
   let src = Nbparts.Util.Text.splitKeepNewlines srcText
 
@@ -96,6 +100,9 @@ parseCellInfo = do
   case Aeson.eitherDecodeStrict (Text.encodeUtf8 jsonUnescaped) of
     Right cellInfo -> pure cellInfo
     Left err -> P.customFailure (Nbparts.ParseMarkdownSourcesJsonError $ Text.pack err)
+
+unescapeComments :: Text -> Text
+unescapeComments = Text.replace "\\\\" "\\" . Text.replace "\\nbparts:cell" "nbparts:cell"
 
 findAttachmentNameByFilePath :: Nbparts.UnembeddedMimeAttachments -> FilePath -> Maybe Text
 findAttachmentNameByFilePath (Nbparts.UnembeddedMimeAttachments attachments) targetFp =

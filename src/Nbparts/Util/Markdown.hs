@@ -65,6 +65,25 @@ blockEndSourcePosToIndices mdLines srcPos = do
             (rawLine, rawColumn)
   Util.Text.lineColToIndex mdLines line column
 
+commentChangesWith :: (Text -> Text) -> [Text] -> NbpartsMd.Blocks -> Maybe [((Int, Int), Text)]
+commentChangesWith transformComment mdLines = go
+  where
+    go :: (Data b) => b -> Maybe [((Int, Int), Text)]
+    go node
+      | Just (maybeIndices, html) <- htmlSourceRangeAndText node,
+        Text.isPrefixOf "<!--" html = do
+          indices <- maybeIndices
+          pure [(indices, transformComment html)]
+      | otherwise = concat <$> sequenceA (Data.gmapQ go node)
+
+    htmlSourceRangeAndText :: (Data a) => a -> Maybe (Maybe (Int, Int), Text)
+    htmlSourceRangeAndText node
+      | Just (NbpartsMd.Block (NbpartsMd.RawBlock (Commonmark.Format "html") html) srcRange _attrs) <- Data.cast node =
+          Just (blockSourceRangeToIndices mdLines srcRange, html)
+      | Just (NbpartsMd.Inline (NbpartsMd.RawInline (Commonmark.Format "html") html) srcRange _attrs) <- Data.cast node =
+          Just (sourceRangeToIndices mdLines srcRange, html)
+      | otherwise = Nothing
+
 -- TODO: Check if this works for reference link images.
 -- Because we want to maintain as much of the original formatting as possible,
 -- instead of modifying the CMarkGFM AST and using its `nodeToCommonmark` function

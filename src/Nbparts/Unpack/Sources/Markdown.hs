@@ -28,6 +28,9 @@ sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Markdown source m
   -- TODO: Revisit syntax spec
   mdAst <- Util.Markdown.parseMarkdown mdText & Arrow.left Nbparts.UnpackParseMarkdownError
 
+  -- Safety: The replacements should be valid because both `commentChangesWith` and `attachmentChangesWith`
+  -- always give valid replacements.
+  let escapesReplacements = Maybe.fromJust $ Util.Markdown.commentChangesWith escapeComments mdLines mdAst
   let attachmentReplacements = case maybeAttachments of
         Just attachments ->
           Maybe.fromJust $
@@ -36,9 +39,10 @@ sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Markdown source m
               mdLines
               mdAst
         Nothing -> []
+  let textReplacements = escapesReplacements <> attachmentReplacements
 
   -- Safety: The replacements do not overlap.
-  let fixedMdText = Maybe.fromJust $ Nbparts.Util.Text.replaceSlices mdText attachmentReplacements
+  let fixedMdText = Maybe.fromJust $ Nbparts.Util.Text.replaceSlices mdText textReplacements
 
   pure $ mkCellMarkerComment (Nbparts.CellMarker cellId cellType maybeAttachments) <> "\n" <> fixedMdText
 sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Raw source _) =
@@ -72,6 +76,9 @@ mkCellMarkerComment cm =
 
 escapeCellMarkerContent :: Text -> Text
 escapeCellMarkerContent = Text.replace "-->" "-\\->" . Text.replace "\\" "\\\\"
+
+escapeComments :: Text -> Text
+escapeComments = Text.replace "nbparts:cell" "\\nbparts:cell" . Text.replace "\\" "\\\\"
 
 lookupAttachmentFilePath :: Nbparts.UnembeddedMimeAttachments -> Text -> Maybe FilePath
 lookupAttachmentFilePath (Nbparts.UnembeddedMimeAttachments attachments) target = do

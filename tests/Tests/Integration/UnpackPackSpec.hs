@@ -76,6 +76,9 @@ runTests fmt = do
   context "when given a notebook with latex" $ do
     testIdentity "latex.ipynb"
 
+  context "when given a notebook containing a markdown cell with the nbparts cell marker" $ do
+    testIdentity "nbparts-cell-marker.ipynb"
+
   context "when given a notebook with attachments" $
     testIdentity "attachments.ipynb"
 
