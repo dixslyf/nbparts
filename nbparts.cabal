@@ -29,6 +29,7 @@ library
         Nbparts.Types,
         Nbparts.Types.Manifest,
         Nbparts.Types.Sources,
+        Nbparts.Types.Sources.Markdown,
         Nbparts.Types.Outputs,
         Nbparts.Types.Metadata,
         Nbparts.Types.Mime,
@@ -70,6 +71,7 @@ library
         crypton ^>=1.0.4,
         mime-types ^>= 0.1.2.0,
         cmark-gfm ^>=0.2.6,
+        commonmark ^>=0.2.6.1,
         megaparsec ^>=9.7.0
     hs-source-dirs: src
     default-language: GHC2021
@@ -107,6 +109,7 @@ test-suite test-nbparts
         ipynb ^>=0.2,
         mime-types ^>= 0.1.2.0,
         cmark-gfm ^>=0.2.6,
+        commonmark ^>=0.2.6.1,
         temporary ^>=1.3,
         filepath ^>=1.4.301.0
     other-modules:
