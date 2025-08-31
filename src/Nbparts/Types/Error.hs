@@ -1,10 +1,13 @@
 module Nbparts.Types.Error where
 
+import Commonmark qualified
 import Control.Exception qualified as Exception
+import Data.Ord qualified as Ord
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Yaml qualified as Yaml
 import Text.Megaparsec qualified as Megaparsec
+import Text.Parsec (errorPos)
 
 recommendedNotebookFormat :: (Int, Int)
 recommendedNotebookFormat = (4, 5)
@@ -14,6 +17,7 @@ data Error = UnpackError UnpackError | PackError PackError
 
 data UnpackError
   = UnpackParseNotebookError Text
+  | UnpackParseMarkdownError Commonmark.ParseError
   | UnpackUnsupportedNotebookFormat (Int, Int)
   | UnpackMissingCellIdError
   deriving (Show, Eq)
@@ -35,19 +39,30 @@ instance Eq PackError where
   (==) a b = show a == show b
   (/=) a b = show a /= show b
 
-newtype ParseMarkdownSourcesError = ParseMarkdownSourcesJsonError Text
-  deriving (Show, Eq, Ord)
+data ParseMarkdownSourcesError
+  = ParseMarkdownSourcesJsonError Text
+  | ParseMarkdownSourcesMarkdownError Commonmark.ParseError
+  deriving (Show, Eq)
+
+instance Ord ParseMarkdownSourcesError where
+  compare (ParseMarkdownSourcesMarkdownError mdErr1) (ParseMarkdownSourcesMarkdownError mdErr2) =
+    compare (errorPos mdErr1) (errorPos mdErr2)
+  compare (ParseMarkdownSourcesJsonError t1) (ParseMarkdownSourcesJsonError t2) = compare t1 t2
+  compare _ _ = Ord.EQ
 
 data CellMetadataTag = CodeCellMetadataTag | GenericCellMetadataTag
   deriving (Show, Eq, Ord)
 
 instance Megaparsec.ShowErrorComponent ParseMarkdownSourcesError where
   showErrorComponent (ParseMarkdownSourcesJsonError msg) =
-    "Invalid JSON in nbparts cell: " <> Text.unpack msg
+    "Invalid JSON in nbparts cell marker: " <> Text.unpack msg
+  showErrorComponent (ParseMarkdownSourcesMarkdownError mdErr) =
+    "Failed to parse markdown: " <> show mdErr
 
 renderError :: Error -> Text
 renderError err = case err of
   UnpackError (UnpackParseNotebookError message) -> "Failed to parse notebook: " <> message
+  UnpackError (UnpackParseMarkdownError mdErr) -> "Failed to parse markdown: " <> Text.pack (show mdErr)
   UnpackError (UnpackUnsupportedNotebookFormat (major, minor)) ->
     "Unsupported notebook format: "
       <> Text.pack (show major)

@@ -3,6 +3,8 @@ module Nbparts.Util.Text where
 import Control.Monad qualified as Monad
 import Data.Text (Text)
 import Data.Text qualified as Text
+import qualified Data.List as List
+import qualified Data.Ord as Ord
 
 lineColToIndex :: [Text] -> Int -> Int -> Maybe Int
 lineColToIndex textLines line col
@@ -13,7 +15,7 @@ lineColToIndex textLines line col
     go _ _ [] = Nothing -- Not enough lines.
     go currentLine charsBefore (l : ls)
       | currentLine == line =
-          if col <= Text.length l
+          if col <= Text.length l + 1
             then Just $ charsBefore + col - 1
             else Nothing
       | otherwise =
@@ -22,8 +24,10 @@ lineColToIndex textLines line col
 
 -- NOTE: Returns Nothing when slices overlap.
 replaceSlices :: Text -> [((Int, Int), Text)] -> Maybe Text
-replaceSlices input = go 0
+replaceSlices input replacements = go 0 sortedReplacements
   where
+    sortedReplacements = List.sortBy (Ord.comparing fst) replacements
+
     go :: Int -> [((Int, Int), Text)] -> Maybe Text
     go pos [] = Just $ Text.drop pos input
     go pos (((start, end), replacement) : rs) = do

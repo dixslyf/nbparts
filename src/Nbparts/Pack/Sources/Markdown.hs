@@ -1,6 +1,5 @@
 module Nbparts.Pack.Sources.Markdown where
 
-import CMarkGFM qualified
 import Control.Applicative (Alternative ((<|>)))
 import Control.Arrow (left)
 import Control.Monad qualified as Monad
@@ -12,6 +11,7 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Nbparts.Types qualified as Nbparts
 import Nbparts.Util.Markdown qualified
+import Nbparts.Util.Markdown qualified as Util.Markdown
 import Nbparts.Util.Text qualified
 import Text.Megaparsec (Parsec)
 import Text.Megaparsec qualified as P
@@ -35,7 +35,25 @@ parseSource = do
   srcText <- case cellType of
     Nbparts.Code -> parseCodeOrRawCell
     Nbparts.Raw -> parseCodeOrRawCell
-    Nbparts.Markdown -> fixAttachments maybeAttachments <$> parseOtherCell
+    Nbparts.Markdown -> do
+      mdText <- parseOtherCell
+
+      mdAst <- case Nbparts.Util.Markdown.parseMarkdown mdText of
+        Right ast -> pure ast
+        Left mdErr -> P.customFailure (Nbparts.ParseMarkdownSourcesMarkdownError mdErr)
+      let mdLines = Text.lines mdText
+
+      let attachmentReplacements = case maybeAttachments of
+            Just attachments ->
+              Maybe.fromJust $
+                Util.Markdown.attachmentChangesWith
+                  (fmap (mappend "attachment:") . findAttachmentNameByFilePath attachments . Text.unpack)
+                  mdLines
+                  mdAst
+            Nothing -> []
+
+      -- Safety: The replacements do not overlap.
+      pure . Maybe.fromJust $ Nbparts.Util.Text.replaceSlices mdText attachmentReplacements
 
   let src = Nbparts.Util.Text.splitKeepNewlines srcText
 
@@ -74,40 +92,13 @@ parseCellInfo = do
   Monad.void $ P.string "nbparts:cell"
   P.space1
   json <- Text.pack <$> P.manyTill P.anySingle (P.string "-->")
-  let jsonUnescaped = unescapeCellInfo json
+  let jsonUnescaped = unescapeCellMarkerContent json
   case Aeson.eitherDecodeStrict (Text.encodeUtf8 jsonUnescaped) of
     Right cellInfo -> pure cellInfo
     Left err -> P.customFailure (Nbparts.ParseMarkdownSourcesJsonError $ Text.pack err)
 
-fixAttachments :: Maybe Nbparts.UnembeddedMimeAttachments -> Text -> Text
-fixAttachments maybeAttachments mdText = do
-  case maybeAttachments of
-    Just attachments ->
-      let mdTree = CMarkGFM.commonmarkToNode [CMarkGFM.optSourcePos] [] mdText
-          attachmentFixes = collectAttachmentFixes attachments mdTree
-       in -- Safety: `collectAttachmentFixes` should always give valid replacement indices.
-          Maybe.fromJust $ Nbparts.Util.Markdown.replaceSlices mdText attachmentFixes
-    Nothing -> mdText
-
-collectAttachmentFixes ::
-  Nbparts.UnembeddedMimeAttachments ->
-  CMarkGFM.Node ->
-  [(CMarkGFM.PosInfo, Text)]
-collectAttachmentFixes
-  attachments
-  (CMarkGFM.Node maybePosInfo (CMarkGFM.IMAGE url title) children)
-    | Just attachmentName <- findAttachmentNameByFilePath (Text.unpack url) attachments =
-        let -- Safety: We should have parsed with the CMarkGFM.optSourcePos extension,
-            -- so position information should be available.
-            posInfo = Maybe.fromJust maybePosInfo
-
-            fixedImageNode = CMarkGFM.Node Nothing (CMarkGFM.IMAGE ("attachment:" <> attachmentName) title) children
-            fixedImageNodeText = Text.strip $ CMarkGFM.nodeToCommonmark [] Nothing fixedImageNode
-         in [(posInfo, fixedImageNodeText)]
-collectAttachmentFixes attachments (CMarkGFM.Node _ _ children) = concatMap (collectAttachmentFixes attachments) children
-
-findAttachmentNameByFilePath :: FilePath -> Nbparts.UnembeddedMimeAttachments -> Maybe Text
-findAttachmentNameByFilePath targetFp (Nbparts.UnembeddedMimeAttachments attachments) =
+findAttachmentNameByFilePath :: Nbparts.UnembeddedMimeAttachments -> FilePath -> Maybe Text
+findAttachmentNameByFilePath (Nbparts.UnembeddedMimeAttachments attachments) targetFp =
   Map.foldrWithKey go Nothing attachments
   where
     go :: Text -> Nbparts.UnembeddedMimeBundle -> Maybe Text -> Maybe Text
@@ -121,5 +112,5 @@ findAttachmentNameByFilePath targetFp (Nbparts.UnembeddedMimeAttachments attachm
     matches targetFp' (Nbparts.BinaryData fp) = fp == targetFp'
     matches _ _ = False
 
-unescapeCellInfo :: Text -> Text
-unescapeCellInfo = Text.replace "\\\\" "\\" . Text.replace "-\\->" "-->"
+unescapeCellMarkerContent :: Text -> Text
+unescapeCellMarkerContent = Text.replace "\\\\" "\\" . Text.replace "-\\->" "-->"

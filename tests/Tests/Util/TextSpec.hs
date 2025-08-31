@@ -22,7 +22,7 @@ spec = do
       it "returns `col - 1`" $ do
         textLine <- forAll $ Gen.text (Range.linear 1 50) Gen.unicode
         let textLines = [textLine]
-        col <- forAll $ Gen.int (Range.linear 1 (Text.length textLine))
+        col <- forAll $ Gen.int (Range.linear 1 (Text.length textLine + 1))
         lineColToIndex textLines 1 col === Just (col - 1)
 
     context "when given multiple lines with valid line and col" $ do
@@ -33,6 +33,7 @@ spec = do
         lineColToIndex textLines 1 2 `shouldBe` Just 1
         lineColToIndex textLines 2 1 `shouldBe` Just 4
         lineColToIndex textLines 3 3 `shouldBe` Just 11
+        lineColToIndex textLines 3 6 `shouldBe` Just 14
 
       it "returns an index whose letter is equal to the one retrieved using the line-col index" $ hedgehog $ do
         textLines <-
@@ -83,7 +84,7 @@ spec = do
               (Gen.text (Range.linear 1 50) Gen.unicode)
         line <- forAll $ Gen.int (Range.linear 1 (length textLines))
         let textLine = textLines !! (line - 1)
-        col <- forAll $ Gen.int (Range.linear (Text.length textLine + 1) 1000)
+        col <- forAll $ Gen.int (Range.linear (Text.length textLine + 2) 1000)
         lineColToIndex textLines line col === Nothing
 
   describe "replaceSlices" $ do

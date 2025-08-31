@@ -1,8 +1,9 @@
 module Nbparts.Unpack.Sources.Markdown where
 
-import CMarkGFM qualified
+import Control.Arrow qualified as Arrow
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy qualified as LazyByteString
+import Data.Function ((&))
 import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
 import Data.Text (Text)
@@ -10,7 +11,8 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Nbparts.Types qualified as Nbparts
 import Nbparts.Util.Map qualified
-import Nbparts.Util.Markdown qualified
+import Nbparts.Util.Markdown qualified as Util.Markdown
+import Nbparts.Util.Text qualified
 
 sourcesToMarkdown :: Text -> [Nbparts.CellSource] -> Either Nbparts.UnpackError Text
 sourcesToMarkdown lang sources = do
@@ -19,24 +21,31 @@ sourcesToMarkdown lang sources = do
 
 sourceToMarkdown :: Text -> Nbparts.CellSource -> Either Nbparts.UnpackError Text
 sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Markdown source maybeAttachments) = do
-  -- TODO: Investigate options and extensions.
+  -- NOTE: Remember that the elements in `source` have trailing newlines.
   let mdText = Text.concat source
-  let mdTree = CMarkGFM.commonmarkToNode [CMarkGFM.optSourcePos] [] mdText
+  let mdLines = Text.lines mdText
 
-  fixedMdText <- case maybeAttachments of
-    Just attachments -> do
-      let attachmentFixes = collectAttachmentFixes attachments mdTree
-      -- Safety: `collectAttachmentFixes` should always give valid replacement indices.
-      let fixedMdText = Maybe.fromJust $ Nbparts.Util.Markdown.replaceSlices mdText attachmentFixes
-      pure fixedMdText
-    Nothing -> pure mdText
+  -- TODO: Revisit syntax spec
+  mdAst <- Util.Markdown.parseMarkdown mdText & Arrow.left Nbparts.UnpackParseMarkdownError
 
-  pure $ cellStart (Nbparts.CellMarker cellId cellType maybeAttachments) <> "\n" <> fixedMdText
+  let attachmentReplacements = case maybeAttachments of
+        Just attachments ->
+          Maybe.fromJust $
+            Util.Markdown.attachmentChangesWith
+              (fmap Text.pack . lookupAttachmentFilePath attachments)
+              mdLines
+              mdAst
+        Nothing -> []
+
+  -- Safety: The replacements do not overlap.
+  let fixedMdText = Maybe.fromJust $ Nbparts.Util.Text.replaceSlices mdText attachmentReplacements
+
+  pure $ mkCellMarkerComment (Nbparts.CellMarker cellId cellType maybeAttachments) <> "\n" <> fixedMdText
 sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Raw source _) =
   pure $
     Text.intercalate
       "\n"
-      [ cellStart (Nbparts.CellMarker cellId cellType Nothing),
+      [ mkCellMarkerComment (Nbparts.CellMarker cellId cellType Nothing),
         "```",
         Text.concat source,
         "```"
@@ -45,57 +54,35 @@ sourceToMarkdown lang (Nbparts.CellSource cellId cellType@Nbparts.Code source _)
   pure $
     Text.intercalate
       "\n"
-      [ cellStart (Nbparts.CellMarker cellId cellType Nothing),
+      [ mkCellMarkerComment (Nbparts.CellMarker cellId cellType Nothing),
         "```" <> lang,
         Text.concat source,
         "```"
       ]
 
-cellStart :: Nbparts.CellMarker -> Text
-cellStart cellInfo =
+mkCellMarkerComment :: Nbparts.CellMarker -> Text
+mkCellMarkerComment cm =
   Text.intercalate
     " "
     [ "<!--",
       "nbparts:cell",
-      escapeCellInfo $ Text.decodeUtf8 $ LazyByteString.toStrict $ Aeson.encode cellInfo,
+      escapeCellMarkerContent $ Text.decodeUtf8 $ LazyByteString.toStrict $ Aeson.encode cm,
       "-->"
     ]
 
-escapeCellInfo :: Text -> Text
-escapeCellInfo = Text.replace "-->" "-\\->" . Text.replace "\\" "\\\\"
+escapeCellMarkerContent :: Text -> Text
+escapeCellMarkerContent = Text.replace "-->" "-\\->" . Text.replace "\\" "\\\\"
 
--- Because we want to maintain as much of the original formatting as possible,
--- instead of modifying the CMarkGFM AST and using its `nodeToCommonmark` function
--- (which would modify some of the formatting), we collect the positions of the image links
--- and what to replace them by before performing the replacement using plain text manipulation.
--- That way, we leave everything else untouched.
-collectAttachmentFixes ::
-  Nbparts.UnembeddedMimeAttachments ->
-  CMarkGFM.Node ->
-  [(CMarkGFM.PosInfo, Text)]
-collectAttachmentFixes
-  (Nbparts.UnembeddedMimeAttachments attachments)
-  (CMarkGFM.Node maybePosInfo (CMarkGFM.IMAGE url title) children)
-    | Just attachmentName <- Text.stripPrefix "attachment:" url =
-        let maybeAttachmentFp = do
-              (Nbparts.UnembeddedMimeBundle mimeBundle) <- Map.lookup attachmentName attachments
+lookupAttachmentFilePath :: Nbparts.UnembeddedMimeAttachments -> Text -> Maybe FilePath
+lookupAttachmentFilePath (Nbparts.UnembeddedMimeAttachments attachments) target = do
+  attachmentName <- Text.stripPrefix "attachment:" target
 
-              -- The mime bundle should only have 1 entry, but just in case it doesn't,
-              -- we find the first entry whose mime type starts with "image".
-              mimedata <- Nbparts.Util.Map.lookupByKeyPrefix "image" mimeBundle
-              case mimedata of
-                Nbparts.BinaryData fp -> pure fp
-                _ -> Nothing
-         in case maybeAttachmentFp of
-              Just fp ->
-                let attachmentFp = Text.pack fp
-                    -- Safety: We should have parsed with the CMarkGFM.optSourcePos extension,
-                    -- so position information should be available.
-                    posInfo = Maybe.fromJust maybePosInfo
+  -- TODO: Should warn if the attachment can't be found.
+  (Nbparts.UnembeddedMimeBundle mimeBundle) <- Map.lookup attachmentName attachments
 
-                    fixedImageNode = CMarkGFM.Node Nothing (CMarkGFM.IMAGE attachmentFp title) children
-                    fixedImageNodeText = Text.strip $ CMarkGFM.nodeToCommonmark [] Nothing fixedImageNode
-                 in [(posInfo, fixedImageNodeText)]
-              -- TODO: Should warn if Nothing
-              Nothing -> []
-collectAttachmentFixes attachments (CMarkGFM.Node _ _ children) = concatMap (collectAttachmentFixes attachments) children
+  -- The mime bundle should only have 1 entry, but just in case it doesn't,
+  -- we find the first entry whose mime type starts with "image".
+  mimedata <- Nbparts.Util.Map.lookupByKeyPrefix "image" mimeBundle
+  case mimedata of
+    Nbparts.BinaryData fp -> Just fp
+    _ -> Nothing
