@@ -7,7 +7,18 @@ import Data.Yaml qualified as Yaml
 import Hedgehog (Gen, forAll, tripping, (===))
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-import Nbparts.Types.Manifest (Format (FormatMarkdown, FormatYaml), Manifest (Manifest), currentNbpartsVersion, mkManifest)
+import Nbparts.Types.Manifest
+  ( Format (FormatJson, FormatMarkdown, FormatYaml),
+    Manifest
+      ( Manifest,
+        metadataFormat,
+        nbpartsVersion,
+        outputsFormat,
+        sourcesFormat
+      ),
+    currentNbpartsVersion,
+    defManifest,
+  )
 import Test.Hspec (Spec, describe, it)
 import Test.Hspec.Hedgehog (hedgehog)
 
@@ -17,10 +28,30 @@ genVersion = do
   pure $ Version branches []
 
 genFormat :: Gen Format
-genFormat = Gen.element [FormatYaml, FormatMarkdown]
+genFormat = Gen.element [FormatYaml, FormatJson, FormatMarkdown]
+
+genSourcesFormat :: Gen Format
+genSourcesFormat = genFormat
+
+genMetadataFormat :: Gen Format
+genMetadataFormat = Gen.element [FormatYaml, FormatJson]
+
+genOutputsFormat :: Gen Format
+genOutputsFormat = Gen.element [FormatYaml, FormatJson]
 
 genManifest :: Gen Manifest
-genManifest = Manifest <$> genVersion <*> genFormat
+genManifest = do
+  nbpartsVersion <- genVersion
+  sourcesFormat <- genSourcesFormat
+  metadataFormat <- genMetadataFormat
+  outputsFormat <- genOutputsFormat
+  pure $
+    Manifest
+      { nbpartsVersion,
+        sourcesFormat,
+        metadataFormat,
+        outputsFormat
+      }
 
 spec :: Spec
 spec = do
@@ -33,9 +64,8 @@ spec = do
       manifest <- forAll genManifest
       tripping manifest Yaml.encode (left (const ()) . Yaml.decodeEither')
 
-    it "mkManifest sets nbpartsVersion correctly" $ hedgehog $ do
-      srcFmt <- forAll genFormat
-      let (Manifest nbpartsVersion _) = mkManifest srcFmt
+    it "defManifest has correct nbpartsVersion" $ hedgehog $ do
+      let Manifest {nbpartsVersion} = defManifest
       nbpartsVersion === currentNbpartsVersion
 
   describe "Format" $ do

@@ -7,10 +7,10 @@ import Nbparts.Unpack qualified as Nbparts
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec (Expectation, Spec, SpecWith, around, context, describe, it, shouldBe, shouldSatisfy)
-import Tests.Integration.Util (fixtureDir, runUnpack)
+import Tests.Integration.Util (UnpackFormats (UnpackFormats, metadataFormat, outputsFormat, sourcesFormat), fixtureDir, runSpecWithUnpackFormatsCA, runUnpack)
 
-testUnpackWith :: Nbparts.Format -> FilePath -> (Either Nbparts.Error () -> Expectation) -> FilePath -> Expectation
-testUnpackWith sourcesFormat fixture predicate tmpdir = do
+testUnpackWith :: UnpackFormats -> FilePath -> (Either Nbparts.Error () -> Expectation) -> FilePath -> Expectation
+testUnpackWith (UnpackFormats {sourcesFormat, metadataFormat, outputsFormat}) fixture predicate tmpdir = do
   let nbPath = fixtureDir </> fixture
   let unpackPath = tmpdir </> "unpacked"
   unpackResult <-
@@ -19,13 +19,15 @@ testUnpackWith sourcesFormat fixture predicate tmpdir = do
         UnpackOptions
           { notebook = nbPath,
             sourcesFormat,
+            metadataFormat,
+            outputsFormat,
             outputPath = Just unpackPath
           }
   predicate unpackResult
 
-runTests :: Nbparts.Format -> SpecWith FilePath
-runTests fmt = do
-  let testUnpack = testUnpackWith fmt
+runTests :: UnpackFormats -> SpecWith FilePath
+runTests fmts = do
+  let testUnpack = testUnpackWith fmts
 
   context "when given a notebook with missing cell IDs" $
     it "should return a missing cell ID error" $
@@ -56,6 +58,5 @@ runTests fmt = do
 
 spec :: Spec
 spec = around (withSystemTempDirectory "test-nbparts") $ do
-  describe "Unpack then pack" $ do
-    context "when exporting sources to YAML" $ runTests Nbparts.FormatYaml
-    context "when exporting sources to Markdown" $ runTests Nbparts.FormatMarkdown
+  describe "Unpack" $ do
+    runSpecWithUnpackFormatsCA runTests
