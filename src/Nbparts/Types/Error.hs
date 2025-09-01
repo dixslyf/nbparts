@@ -6,6 +6,7 @@ import Data.Ord qualified as Ord
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Yaml qualified as Yaml
+import Nbparts.Types.Manifest qualified as Manifest
 import Text.Megaparsec qualified as Megaparsec
 import Text.Parsec (errorPos)
 
@@ -25,10 +26,14 @@ data UnpackError
 data PackError
   = PackUnsupportedNotebookFormat (Int, Int)
   | PackParseManifestError Yaml.ParseException
+  | PackIllegalFormatError IllegalFormatContext Manifest.Format
   | PackParseYamlSourcesError Yaml.ParseException
+  | PackParseJsonSourcesError Text
   | PackParseMarkdownSourcesError (Megaparsec.ParseErrorBundle Text ParseMarkdownSourcesError)
-  | PackParseMetadataError Yaml.ParseException
-  | PackParseOutputsError Yaml.ParseException
+  | PackParseYamlMetadataError Yaml.ParseException
+  | PackParseJsonMetadataError Text
+  | PackParseYamlOutputsError Yaml.ParseException
+  | PackParseJsonOutputsError Text
   | PackMissingCellIdError
   | PackMissingCellMetadataError Text
   | PackMissingCellOutputsError Text
@@ -38,6 +43,9 @@ data PackError
 instance Eq PackError where
   (==) a b = show a == show b
   (/=) a b = show a /= show b
+
+data IllegalFormatContext = IllegalFormatSources | IllegalFormatMetadata | IllegalFormatOutputs
+  deriving (Show, Eq, Ord)
 
 data ParseMarkdownSourcesError
   = ParseMarkdownSourcesJsonError Text
@@ -80,10 +88,14 @@ renderError err = case err of
       <> "."
       <> Text.pack (show minor)
   PackError (PackParseManifestError parseErr) -> "Failed to parse manifest: " <> Text.pack (Exception.displayException parseErr)
+  PackError (PackIllegalFormatError ctx fmt) -> "Illegal format for " <> renderIllegalFormatContext ctx <> ":" <> renderFormat fmt
   PackError (PackParseYamlSourcesError parseErr) -> "Failed to parse sources: " <> Text.pack (Exception.displayException parseErr)
+  PackError (PackParseJsonSourcesError parseErr) -> "Failed to parse sources: " <> parseErr
   PackError (PackParseMarkdownSourcesError errBundle) -> Text.pack $ Megaparsec.errorBundlePretty errBundle
-  PackError (PackParseMetadataError parseErr) -> "Failed to parse metadata: " <> Text.pack (Exception.displayException parseErr)
-  PackError (PackParseOutputsError parseErr) -> "Failed to parse outputs: " <> Text.pack (Exception.displayException parseErr)
+  PackError (PackParseYamlMetadataError parseErr) -> "Failed to parse metadata: " <> Text.pack (Exception.displayException parseErr)
+  PackError (PackParseJsonMetadataError parseErr) -> "Failed to parse metadata: " <> parseErr
+  PackError (PackParseYamlOutputsError parseErr) -> "Failed to parse outputs: " <> Text.pack (Exception.displayException parseErr)
+  PackError (PackParseJsonOutputsError parseErr) -> "Failed to parse outputs: " <> parseErr
   PackError PackMissingCellIdError -> "Markdown content contains missing cell ID"
   PackError (PackMissingCellMetadataError cellId) -> "Could not find metadata for cell ID: " <> cellId
   PackError (PackMissingCellOutputsError cellId) -> "Could not find outputs for cell ID: " <> cellId
@@ -92,6 +104,16 @@ renderError err = case err of
       <> renderCellMetadataTag expected
       <> ", but got: "
       <> renderCellMetadataTag actual
+
+renderFormat :: Manifest.Format -> Text
+renderFormat Manifest.FormatYaml = "yaml"
+renderFormat Manifest.FormatJson = "json"
+renderFormat Manifest.FormatMarkdown = "markdown"
+
+renderIllegalFormatContext :: IllegalFormatContext -> Text
+renderIllegalFormatContext IllegalFormatSources = "sources"
+renderIllegalFormatContext IllegalFormatMetadata = "metadata"
+renderIllegalFormatContext IllegalFormatOutputs = "outputs"
 
 renderCellMetadataTag :: CellMetadataTag -> Text
 renderCellMetadataTag CodeCellMetadataTag = "code cell metadata"

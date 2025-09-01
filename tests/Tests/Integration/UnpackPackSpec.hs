@@ -4,16 +4,27 @@ import Control.Monad.Except (runExceptT)
 import Data.Either qualified as Either
 import Nbparts.Pack (PackOptions (PackOptions))
 import Nbparts.Pack qualified as Nbparts
-import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack (UnpackOptions (UnpackOptions))
 import Nbparts.Unpack qualified as Nbparts
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec (Arg, Expectation, Spec, SpecWith, around, context, describe, it, shouldBe, shouldSatisfy)
-import Tests.Integration.Util (fixtureDir, readIpynb, runPack, runUnpack)
+import Tests.Integration.Util
+  ( UnpackFormats
+      ( UnpackFormats,
+        metadataFormat,
+        outputsFormat,
+        sourcesFormat
+      ),
+    fixtureDir,
+    readIpynb,
+    runPack,
+    runSpecWithUnpackFormatsCA,
+    runUnpack,
+  )
 
-testIdentityWith' :: Nbparts.Format -> FilePath -> FilePath -> Expectation
-testIdentityWith' sourcesFormat fixture tmpdir = do
+testIdentityWith' :: UnpackFormats -> FilePath -> FilePath -> Expectation
+testIdentityWith' (UnpackFormats {sourcesFormat, metadataFormat, outputsFormat}) fixture tmpdir = do
   let nbPath = fixtureDir </> fixture
 
   let unpackPath = tmpdir </> "unpacked"
@@ -25,6 +36,8 @@ testIdentityWith' sourcesFormat fixture tmpdir = do
         UnpackOptions
           { notebook = nbPath,
             sourcesFormat,
+            metadataFormat,
+            outputsFormat,
             outputPath = Just unpackPath
           }
   unpackResult `shouldSatisfy` Either.isRight
@@ -42,12 +55,12 @@ testIdentityWith' sourcesFormat fixture tmpdir = do
   repackedNb <- runExceptT $ readIpynb repackPath
   repackedNb `shouldBe` nb
 
-testIdentityWith :: Nbparts.Format -> FilePath -> SpecWith (Arg (FilePath -> Expectation))
-testIdentityWith sourcesFormat fixture = it "is identity" $ testIdentityWith' sourcesFormat fixture
+testIdentityWith :: UnpackFormats -> FilePath -> SpecWith (Arg (FilePath -> Expectation))
+testIdentityWith unpackFormats fixture = it "is identity" $ testIdentityWith' unpackFormats fixture
 
-runTests :: Nbparts.Format -> SpecWith FilePath
-runTests fmt = do
-  let testIdentity = testIdentityWith fmt
+runTests :: UnpackFormats -> SpecWith FilePath
+runTests unpackFormats = do
+  let testIdentity = testIdentityWith unpackFormats
 
   context "when given an empty notebook (no sources, outputs or metadata)" $
     testIdentity "empty.ipynb"
@@ -97,5 +110,4 @@ runTests fmt = do
 spec :: Spec
 spec = around (withSystemTempDirectory "test-nbparts") $ do
   describe "Unpack then pack" $ do
-    context "when exporting sources to YAML" $ runTests Nbparts.FormatYaml
-    context "when exporting sources to Markdown" $ runTests Nbparts.FormatMarkdown
+    runSpecWithUnpackFormatsCA runTests
