@@ -3,8 +3,8 @@ module Main where
 import Control.Monad.Error.Class (MonadError (throwError))
 import Control.Monad.Except (runExceptT)
 import Data.Text.IO qualified as TIO
-import Nbparts.Run qualified as Nbparts
 import Nbparts.Pack qualified as Nbparts
+import Nbparts.Run qualified as Nbparts
 import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack qualified as Nbparts
 import Options.Applicative qualified as OA
@@ -17,10 +17,26 @@ unpackOptionsParser =
     <$> OA.argument OA.str (OA.metavar "NOTEBOOK" <> OA.help "Path to the notebook to unpack")
     <*> OA.option
       parseSourcesFormat
-      ( OA.short 's'
+      ( OA.short 'S'
           <> OA.long "sources-format"
-          <> OA.metavar "yaml|markdown"
+          <> OA.metavar "yaml|json|markdown"
           <> OA.help "Output format for sources"
+          <> OA.value Nbparts.FormatYaml
+      )
+    <*> OA.option
+      parseMetadataFormat
+      ( OA.short 'M'
+          <> OA.long "metadata-format"
+          <> OA.metavar "yaml|json"
+          <> OA.help "Output format for metadata"
+          <> OA.value Nbparts.FormatYaml
+      )
+    <*> OA.option
+      parseOutputsFormat
+      ( OA.short 'O'
+          <> OA.long "outputs-format"
+          <> OA.metavar "yaml|json"
+          <> OA.help "Output format for outputs"
           <> OA.value Nbparts.FormatYaml
       )
     <*> OA.optional
@@ -48,8 +64,18 @@ nbpartsOptionsParser = Nbparts.Options <$> commandParser
 parseSourcesFormat :: OA.ReadM Nbparts.Format
 parseSourcesFormat = OA.eitherReader $ \case
   "yaml" -> pure Nbparts.FormatYaml
+  "json" -> pure Nbparts.FormatJson
   "markdown" -> pure Nbparts.FormatMarkdown
   s -> throwError $ "Invalid sources format: " <> s
+
+parseMetadataFormat :: OA.ReadM Nbparts.Format
+parseMetadataFormat = OA.eitherReader $ \case
+  "yaml" -> pure Nbparts.FormatYaml
+  "json" -> pure Nbparts.FormatJson
+  s -> throwError $ "Invalid sources format: " <> s
+
+parseOutputsFormat :: OA.ReadM Nbparts.Format
+parseOutputsFormat = parseMetadataFormat
 
 parseOpts :: IO Nbparts.Options
 parseOpts = OA.customExecParser prefs opts

@@ -2,7 +2,8 @@ module Nbparts.Types.Manifest
   ( currentNbpartsVersion,
     Manifest (..),
     Format (..),
-    mkManifest,
+    defManifest,
+    formatExtension,
   )
 where
 
@@ -17,15 +18,31 @@ currentNbpartsVersion = Paths_nbparts.version
 
 data Manifest = Manifest
   { nbpartsVersion :: Version,
-    sourcesFormat :: Format
+    sourcesFormat :: Format,
+    metadataFormat :: Format,
+    outputsFormat :: Format
   }
   deriving (Generic, Show, Eq, Ord)
 
-mkManifest :: Format -> Manifest
-mkManifest = Manifest currentNbpartsVersion
+defManifest :: Manifest
+defManifest =
+  Manifest
+    { nbpartsVersion = currentNbpartsVersion,
+      sourcesFormat = FormatYaml,
+      metadataFormat = FormatYaml,
+      outputsFormat = FormatYaml
+    }
 
-data Format = FormatYaml | FormatMarkdown
+data Format
+  = FormatYaml
+  | FormatJson
+  | FormatMarkdown
   deriving (Generic, Show, Eq, Ord)
+
+formatExtension :: Format -> String
+formatExtension FormatYaml = "yaml"
+formatExtension FormatJson = "json"
+formatExtension FormatMarkdown = "md"
 
 instance Aeson.ToJSON Manifest where
   toJSON = Aeson.genericToJSON jsonOptions
