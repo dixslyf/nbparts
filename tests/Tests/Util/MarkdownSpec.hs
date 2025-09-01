@@ -2,6 +2,7 @@ module Tests.Util.MarkdownSpec where
 
 import Commonmark (SourceRange (SourceRange))
 import Data.Function ((&))
+import Data.List.NonEmpty qualified as NonEmptyList
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Hedgehog (Gen, evalMaybe, forAll, success, (===))
@@ -24,6 +25,37 @@ genTextLines =
   Gen.list
     (Range.linear 1 5)
     (Gen.text (Range.linear 1 50) Gen.alphaNum) -- TODO: Figure out how to generate unicode text, but without newlines.
+
+genNonOverlappingSourceRanges ::
+  [Text.Text] ->
+  Gen SourceRange
+genNonOverlappingSourceRanges textLines = do
+  targetN <- Gen.int (Range.linear 2 (length textLines))
+  pairs <- go targetN 1
+  pure $ SourceRange pairs
+  where
+    maxLine = length textLines
+    lastLineLength = Text.length (textLines !! (maxLine - 1))
+
+    go :: Int -> Int -> Gen [(SourcePos, SourcePos)]
+    go 0 _ = pure []
+    go k minLine
+      | minLine > maxLine = pure []
+      | otherwise = do
+          sLine <- Gen.int (Range.linear minLine maxLine)
+          let sTextLine = textLines !! (sLine - 1)
+          sCol <- Gen.int (Range.linear 1 (Text.length sTextLine))
+
+          eLine <- Gen.int (Range.linear sLine maxLine)
+          let eTextLine = textLines !! (eLine - 1)
+          let minEndCol = if eLine == sLine then sCol + 1 else 1
+          eCol <- Gen.int (Range.linear minEndCol (Text.length eTextLine))
+
+          if eLine == maxLine && eCol == lastLineLength
+            then pure [(mkPos sLine sCol, mkPos eLine eCol)] -- Stop early
+            else do
+              rest <- go (k - 1) eLine
+              pure ((mkPos sLine sCol, mkPos eLine eCol) : rest)
 
 spec :: Spec
 spec = do
@@ -150,6 +182,17 @@ spec = do
             success
           else
             sourceRangeToIndices textLines (mkSrcRange sLine sCol eLine eCol) === Nothing
+
+    context "when given multiple pairs of source positions" $ do
+      it "behaves as if given a pair spanning from the first start pos to the last end pos" $ hedgehog $ do
+        textLines <- forAll genTextLines
+        srcRange <- forAll $ genNonOverlappingSourceRanges textLines
+
+        let (SourceRange pairs) = srcRange
+        let pairs' = NonEmptyList.fromList pairs
+        let srcRangeUnified = SourceRange [(fst $ NonEmptyList.head pairs', snd $ NonEmptyList.last pairs')]
+
+        sourceRangeToIndices textLines srcRange === sourceRangeToIndices textLines srcRangeUnified
 
   describe "blockSourceRangeToIndices" $ do
     context "when given line and column valid for sourceRangeToIndices" $

@@ -5,6 +5,7 @@ import Control.Monad.Identity (runIdentity)
 import Data.Data (Data)
 import Data.Data qualified as Data
 import Data.Function ((&))
+import Data.List.NonEmpty qualified as NonEmptyList
 import Data.Maybe qualified as Maybe
 import Data.Sequence (Seq ((:|>)))
 import Data.Sequence qualified as Sequence
@@ -22,15 +23,17 @@ parseMarkdown mdText =
       & Commonmark.parseCommonmarkWith Commonmark.defaultSyntaxSpec
 
 sourceRangeToIndices :: [Text] -> Commonmark.SourceRange -> Maybe (Int, Int)
-sourceRangeToIndices mdLines (Commonmark.SourceRange [(start, end)]) = do
-  startIdx <- sourcePosToIndices mdLines start
-  endIdx <- sourcePosToIndices mdLines end
+sourceRangeToIndices mdLines (Commonmark.SourceRange srcRange) = do
+  let srcRange' = NonEmptyList.fromList srcRange
+      (startPos, _) = NonEmptyList.head srcRange'
+      (_, endPos) = NonEmptyList.last srcRange'
+  startIdx <- sourcePosToIndices mdLines startPos
+  endIdx <- sourcePosToIndices mdLines endPos
   if startIdx <= endIdx
     then
       Just (startIdx, endIdx)
     else
       Nothing
-sourceRangeToIndices _ (Commonmark.SourceRange _) = error "Unexpected multiple source ranges"
 
 sourcePosToIndices :: [Text] -> Commonmark.SourcePos -> Maybe Int
 sourcePosToIndices mdLines srcPos = do
@@ -39,15 +42,17 @@ sourcePosToIndices mdLines srcPos = do
   Util.Text.lineColToIndex mdLines line column
 
 blockSourceRangeToIndices :: [Text] -> Commonmark.SourceRange -> Maybe (Int, Int)
-blockSourceRangeToIndices mdLines (Commonmark.SourceRange [(start, end)]) = do
-  startIdx <- sourcePosToIndices mdLines start
-  endIdx <- blockEndSourcePosToIndices mdLines end
+blockSourceRangeToIndices mdLines (Commonmark.SourceRange srcRange) = do
+  let srcRange' = NonEmptyList.fromList srcRange
+      (startPos, _) = NonEmptyList.head srcRange'
+      (_, endPos) = NonEmptyList.last srcRange'
+  startIdx <- sourcePosToIndices mdLines startPos
+  endIdx <- blockEndSourcePosToIndices mdLines endPos
   if startIdx <= endIdx
     then
       Just (startIdx, endIdx)
     else
       Nothing
-blockSourceRangeToIndices _ (Commonmark.SourceRange _) = error "Unexpected multiple source ranges"
 
 blockEndSourcePosToIndices :: [Text] -> Commonmark.SourcePos -> Maybe Int
 blockEndSourcePosToIndices mdLines srcPos = do
@@ -68,20 +73,28 @@ blockEndSourcePosToIndices mdLines srcPos = do
 commentChangesWith :: (Text -> Text) -> [Text] -> NbpartsMd.Blocks -> Maybe [((Int, Int), Text)]
 commentChangesWith transformComment mdLines = go
   where
+    mdText = Text.intercalate "\n" mdLines
+
     go :: (Data b) => b -> Maybe [((Int, Int), Text)]
     go node
-      | Just (maybeIndices, html) <- htmlSourceRangeAndText node,
+      | Just (srcRange, html) <- htmlSourceRangeAndText node,
         Text.isPrefixOf "<!--" html = do
-          indices <- maybeIndices
-          pure [(indices, transformComment html)]
+          -- Inlines don't have the same quirk as blocks (the (number of lines + 1, 1) end index issue).
+          -- Applying `blockSourceRangeToIndices` to the source range for inlines should exhibit the same
+          -- behaviour as `sourceRangeToIndices`.
+          indices@(startIdx, endIdx) <- blockSourceRangeToIndices mdLines srcRange
+          -- Unfortunately, the `html` given by the Commonmark parser leaves out some whitespace for
+          -- mutiline inline HTML, so we need to manually extract the full HTML from the original text.
+          let fullHtml = mdText & Text.take endIdx & Text.drop startIdx
+          pure [(indices, transformComment fullHtml)]
       | otherwise = concat <$> sequenceA (Data.gmapQ go node)
 
-    htmlSourceRangeAndText :: (Data a) => a -> Maybe (Maybe (Int, Int), Text)
+    htmlSourceRangeAndText :: (Data a) => a -> Maybe (Commonmark.SourceRange, Text)
     htmlSourceRangeAndText node
       | Just (NbpartsMd.Block (NbpartsMd.RawBlock (Commonmark.Format "html") html) srcRange _attrs) <- Data.cast node =
-          Just (blockSourceRangeToIndices mdLines srcRange, html)
+          Just (srcRange, html)
       | Just (NbpartsMd.Inline (NbpartsMd.RawInline (Commonmark.Format "html") html) srcRange _attrs) <- Data.cast node =
-          Just (sourceRangeToIndices mdLines srcRange, html)
+          Just (srcRange, html)
       | otherwise = Nothing
 
 -- TODO: Check if this works for reference link images.
@@ -109,13 +122,8 @@ attachmentChangesWith transformTarget mdLines = go
                     _ :|> (NbpartsMd.Inline _ (Commonmark.SourceRange sr) _) -> snd $ last sr
                     Sequence.Empty -> fst $ last (Commonmark.unSourceRange srcRange)
 
-                  searchText = Text.drop searchStart mdText
-                  (prefix, _haystack) = Text.breakOn target searchText
-
-                  targetLength = Text.length target
-                  startIdx = searchStart + Text.length prefix
-                  endIdx = startIdx + targetLength
-                  indices = (startIdx, endIdx)
+                  -- Safety: The target will always exist after the inlines.
+                  indices = Maybe.fromJust $ Util.Text.findSliceFrom searchStart mdText target
                in Just [(indices, transformedTarget)]
             Nothing -> Just []
       | otherwise = concat <$> sequenceA (Data.gmapQ go node)

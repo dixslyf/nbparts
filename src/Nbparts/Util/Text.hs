@@ -1,10 +1,10 @@
 module Nbparts.Util.Text where
 
 import Control.Monad qualified as Monad
+import Data.List qualified as List
+import Data.Ord qualified as Ord
 import Data.Text (Text)
 import Data.Text qualified as Text
-import qualified Data.List as List
-import qualified Data.Ord as Ord
 
 lineColToIndex :: [Text] -> Int -> Int -> Maybe Int
 lineColToIndex textLines line col
@@ -63,3 +63,22 @@ splitKeepNewlines txt
        in case Text.uncons rest of
             Just ('\n', rest') -> (before `Text.snoc` '\n') : splitKeepNewlines rest'
             _ -> [before]
+
+findSliceFrom :: Int -> Text -> Text -> Maybe (Int, Int)
+findSliceFrom searchStart haystack needle = do
+  (startIdx, endIdx) <- findSlice (Text.drop searchStart haystack) needle
+  pure (startIdx + searchStart, endIdx + searchStart)
+
+findSlice :: Text -> Text -> Maybe (Int, Int)
+findSlice haystack needle = do
+  startIdx <- findSliceStart haystack needle
+  let endIdx = startIdx + Text.length needle
+  pure (startIdx, endIdx)
+
+findSliceStart :: Text -> Text -> Maybe Int
+findSliceStart haystack needle =
+  if Text.null remaining
+    then Nothing
+    else Just $ Text.length prefix
+  where
+    (prefix, remaining) = Text.breakOn needle haystack
