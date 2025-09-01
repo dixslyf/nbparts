@@ -30,16 +30,15 @@ import Commonmark
     ListSpacing,
     ListType,
     Rangeable (ranged),
-    SourceRange, ToPlainText (toPlainText),
+    SourceRange,
   )
 import Commonmark.Types (HasAttributes (addAttributes))
+import Data.Data (Data, Typeable)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
-import Data.Data (Data, Typeable)
-import qualified Data.Data as Data
 
 newtype Inlines = Inlines (Seq Inline)
   deriving (Show, Semigroup, Monoid, Data, Typeable)
@@ -94,25 +93,6 @@ instance IsInline Inlines where
   image target title ils = singletonInlines $ Image target title ils
   code = singletonInlines . Code
   rawInline format txt = singletonInlines $ RawInline format txt
-
-instance ToPlainText Inlines where
-  toPlainText (Inlines ils) = foldMap toPlainText ils
-
-instance ToPlainText Inline where
-  toPlainText (Inline ilType _srcRange _attrs) = toPlainText ilType
-
-instance ToPlainText InlineType where
-  toPlainText (Code txt) = ""
-  toPlainText (Emph ils) = ""
-  toPlainText (Entity txt) = ""
-  toPlainText (EscapedChar char) = ""
-  toPlainText (Image target title ils) = ""
-  toPlainText LineBreak = "\n"
-  toPlainText (Link target title ils) = ""
-  toPlainText (RawInline fmt txt) = ""
-  toPlainText SoftBreak = "\n"
-  toPlainText (Str txt) = ""
-  toPlainText (Strong ils) = ""
 
 newtype Blocks = Blocks (Seq Block)
   deriving (Show, Semigroup, Monoid, Data, Typeable)
