@@ -1,5 +1,6 @@
 module Nbparts.Pack where
 
+import Control.Applicative (liftA3)
 import Control.Arrow (left)
 import Control.Monad ((>=>))
 import Control.Monad.Error.Class (MonadError (throwError), liftEither)
@@ -9,15 +10,20 @@ import Data.Aeson.Encode.Pretty (Config (confIndent))
 import Data.Aeson.Encode.Pretty qualified as AesonPretty
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Ipynb qualified as Ipynb
+import Data.List ((!?))
+import Data.List.NonEmpty qualified as NonEmptyList
 import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
+import Data.Version (Version (Version))
+import Data.Version qualified as Version
 import Data.Yaml qualified as Yaml
 import Nbparts.Pack.Metadata qualified as Nbparts
 import Nbparts.Pack.Outputs qualified as Nbparts
 import Nbparts.Pack.Sources qualified as Nbparts
 import Nbparts.Pack.Sources.Markdown qualified as Nbparts
+import Nbparts.Types (currentNbpartsVersion)
 import Nbparts.Types qualified as Nbparts
 import System.FilePath ((<.>), (</>))
 import System.FilePath qualified as FilePath
@@ -39,13 +45,15 @@ pack (PackOptions nbpartsDir maybeOutputPath) = do
 
   let manifestPath = mkImportPath "nbparts" Nbparts.FormatYaml
   ( Nbparts.Manifest
-      { nbpartsVersion = _nbpartsVersion,
+      { nbpartsVersion,
         sourcesFormat,
         metadataFormat,
         outputsFormat
       }
     ) <-
     liftEither =<< liftIO (left Nbparts.PackParseManifestError <$> Yaml.decodeFileEither manifestPath)
+
+  checkVersion nbpartsVersion
 
   -- TODO: Don't fail if metadata and outputs are missing — just warn.
   let sourcesPath = mkImportPath "sources" sourcesFormat
@@ -96,6 +104,48 @@ pack (PackOptions nbpartsDir maybeOutputPath) = do
       )
 
   liftIO $ exportJson outputPath filledNb
+
+checkVersion :: (MonadError Nbparts.PackError m, MonadIO m) => Version -> m ()
+checkVersion nbpartsVersion = do
+  let Version branch _ = nbpartsVersion
+      maybeMajor = branch !? 0
+      maybeMinor = branch !? 1
+      maybePatch = branch !? 2
+
+  (major, minor, patch) <- case liftA3 (,,) maybeMajor maybeMinor maybePatch of
+    Just branches -> pure branches
+    Nothing -> throwError $ Nbparts.PackManifestUnknownVersionError nbpartsVersion
+
+  compareVersion major minor patch
+  where
+    Version cBranch' _ = currentNbpartsVersion
+    cBranch = NonEmptyList.fromList cBranch'
+    -- Safety: The known current nbparts version will always have a major, minor and patch version.
+    -- The same cannot be said for the version parsed from the manifest, however.
+    cMajor = NonEmptyList.head cBranch
+    cMinor = cBranch NonEmptyList.!! 1
+    cPatch = cBranch NonEmptyList.!! 2
+
+    compareVersion :: (MonadError Nbparts.PackError m, MonadIO m) => Int -> Int -> Int -> m ()
+    compareVersion major minor patch
+      | cMajor > major = throwError $ Nbparts.PackManifestTooOldError nbpartsVersion
+      | cMajor < major = throwError $ Nbparts.PackManifestTooNewError nbpartsVersion
+      | cMinor < minor = liftIO $ warnManifestNewer "minor"
+      | cPatch < patch = liftIO $ warnManifestNewer "patch"
+      -- Newer minor or patch version should be backwards compatible.
+      | otherwise = pure ()
+
+    warnManifestNewer :: String -> IO ()
+    warnManifestNewer compStr =
+      putStrLn $
+        "Warning: Manifest's "
+          <> compStr
+          <> " version ("
+          <> Version.showVersion nbpartsVersion
+          <> ") is newer than the current nbparts ("
+          <> Version.showVersion currentNbpartsVersion
+          <> "). nbparts will still try to continue, "
+          <> "but may fail or produce an incorrect notebook!"
 
 prettyConfig :: AesonPretty.Config
 prettyConfig = AesonPretty.defConfig {confIndent = AesonPretty.Spaces 1}

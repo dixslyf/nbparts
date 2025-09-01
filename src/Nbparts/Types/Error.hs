@@ -5,7 +5,10 @@ import Control.Exception qualified as Exception
 import Data.Ord qualified as Ord
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Version qualified as Data
+import Data.Version qualified as Version
 import Data.Yaml qualified as Yaml
+import Nbparts.Types.Manifest (currentNbpartsVersion)
 import Nbparts.Types.Manifest qualified as Manifest
 import Text.Megaparsec qualified as Megaparsec
 import Text.Parsec (errorPos)
@@ -26,6 +29,9 @@ data UnpackError
 data PackError
   = PackUnsupportedNotebookFormat (Int, Int)
   | PackParseManifestError Yaml.ParseException
+  | PackManifestUnknownVersionError Data.Version
+  | PackManifestTooNewError Data.Version
+  | PackManifestTooOldError Data.Version
   | PackIllegalFormatError IllegalFormatContext Manifest.Format
   | PackParseYamlSourcesError Yaml.ParseException
   | PackParseJsonSourcesError Text
@@ -88,6 +94,19 @@ renderError err = case err of
       <> "."
       <> Text.pack (show minor)
   PackError (PackParseManifestError parseErr) -> "Failed to parse manifest: " <> Text.pack (Exception.displayException parseErr)
+  PackError (PackManifestUnknownVersionError version) -> "Unknown manifest version: " <> Text.pack (Version.showVersion version)
+  PackError (PackManifestTooNewError version) ->
+    "Manifest version ("
+      <> Text.pack (Version.showVersion version)
+      <> ") is too new for the current nbparts ("
+      <> Text.pack (Version.showVersion currentNbpartsVersion)
+      <> ")"
+  PackError (PackManifestTooOldError version) ->
+    "Manifest version ("
+      <> Text.pack (Version.showVersion version)
+      <> ") is too old for the current nbparts ("
+      <> Text.pack (Version.showVersion currentNbpartsVersion)
+      <> ")"
   PackError (PackIllegalFormatError ctx fmt) -> "Illegal format for " <> renderIllegalFormatContext ctx <> ":" <> renderFormat fmt
   PackError (PackParseYamlSourcesError parseErr) -> "Failed to parse sources: " <> Text.pack (Exception.displayException parseErr)
   PackError (PackParseJsonSourcesError parseErr) -> "Failed to parse sources: " <> parseErr
