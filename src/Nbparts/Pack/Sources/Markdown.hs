@@ -43,16 +43,14 @@ parseSource = do
         Left mdErr -> P.customFailure (Nbparts.ParseMarkdownSourcesMarkdownError mdErr)
       let mdLines = Text.lines mdText
 
-      -- Safety: The replacements should be valid because both `commentChangesWith` and `collectAttachmentFixes`
-      -- always give valid replacements.
+      -- Safety: The replacements should be valid because both `commentChangesWith` always gives valid replacements.
       let escapesReplacements = Maybe.fromJust $ Util.Markdown.commentChangesWith unescapeComments mdLines mdAst
       let attachmentReplacements = case maybeAttachments of
             Just attachments ->
-              Maybe.fromJust $
-                Util.Markdown.attachmentChangesWith
-                  (fmap (mappend "attachment:") . findAttachmentNameByFilePath attachments . Text.unpack)
-                  mdLines
-                  mdAst
+              Util.Markdown.attachmentChangesWith
+                (fmap (mappend "attachment:") . findAttachmentNameByFilePath attachments . Text.unpack)
+                mdLines
+                mdAst
             Nothing -> []
       let textReplacements = escapesReplacements <> attachmentReplacements
 

@@ -28,16 +28,14 @@ sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Markdown source m
   -- TODO: Revisit syntax spec
   mdAst <- Util.Markdown.parseMarkdown mdText & Arrow.left Nbparts.UnpackParseMarkdownError
 
-  -- Safety: The replacements should be valid because both `commentChangesWith` and `attachmentChangesWith`
-  -- always give valid replacements.
+  -- Safety: The replacements should be valid because both `commentChangesWith` always gives valid replacements.
   let escapesReplacements = Maybe.fromJust $ Util.Markdown.commentChangesWith escapeComments mdLines mdAst
   let attachmentReplacements = case maybeAttachments of
         Just attachments ->
-          Maybe.fromJust $
-            Util.Markdown.attachmentChangesWith
-              (fmap Text.pack . lookupAttachmentFilePath attachments)
-              mdLines
-              mdAst
+          Util.Markdown.attachmentChangesWith
+            (fmap Text.pack . lookupAttachmentFilePath attachments)
+            mdLines
+            mdAst
         Nothing -> []
   let textReplacements = escapesReplacements <> attachmentReplacements
 

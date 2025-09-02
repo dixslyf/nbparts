@@ -72,7 +72,11 @@ mkInline :: InlineType -> Inline
 mkInline ilType = Inline ilType mempty mempty
 
 instance Rangeable Inlines where
-  ranged srcRange (Inlines ils) = Inlines $ fmap (\(Inline ilType _ attrs) -> Inline ilType srcRange attrs) ils
+  ranged srcRange' (Inlines ils) =
+    Inlines $
+      fmap
+        (\(Inline ilType srcRange attrs) -> Inline ilType (srcRange <> srcRange') attrs)
+        ils
 
 instance HasAttributes Inlines where
   addAttributes attrs (Inlines ils) =
@@ -123,10 +127,10 @@ mkBlock :: BlockType -> Block
 mkBlock blockType = Block blockType mempty mempty
 
 instance Rangeable Blocks where
-  ranged srcRange (Blocks blks) =
+  ranged srcRange' (Blocks blks) =
     Blocks $
       fmap
-        (\(Block blkType _ attrs) -> Block blkType srcRange attrs)
+        (\(Block blkType srcRange attrs) -> Block blkType (srcRange <> srcRange') attrs)
         blks
 
 instance HasAttributes Blocks where
@@ -144,5 +148,5 @@ instance IsBlock Inlines Blocks where
   codeBlock info txt = singletonBlocks $ CodeBlock info txt
   heading level ils = singletonBlocks $ Heading level ils
   rawBlock format txt = singletonBlocks $ RawBlock format txt
-  referenceLinkDefinition a b = singletonBlocks $ ReferenceLinkDefinition a b
+  referenceLinkDefinition label (dest, title) = singletonBlocks $ ReferenceLinkDefinition label (dest, title)
   list listType listSpacing blks = singletonBlocks $ List listType listSpacing (mconcat blks)

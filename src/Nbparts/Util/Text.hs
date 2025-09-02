@@ -64,6 +64,9 @@ splitKeepNewlines txt
             Just ('\n', rest') -> (before `Text.snoc` '\n') : splitKeepNewlines rest'
             _ -> [before]
 
+findSliceBetween :: Int -> Int -> Text -> Text -> Maybe (Int, Int)
+findSliceBetween searchStart searchEnd haystack = findSliceFrom searchStart (Text.take searchEnd haystack)
+
 findSliceFrom :: Int -> Text -> Text -> Maybe (Int, Int)
 findSliceFrom searchStart haystack needle = do
   (startIdx, endIdx) <- findSlice (Text.drop searchStart haystack) needle

@@ -97,33 +97,52 @@ commentChangesWith transformComment mdLines = go
           Just (srcRange, html)
       | otherwise = Nothing
 
--- TODO: Check if this works for reference link images.
 -- Because we want to maintain as much of the original formatting as possible,
--- instead of modifying the CMarkGFM AST and using its `nodeToCommonmark` function
--- (which would modify some of the formatting), we collect the positions of the image links
--- and what to replace them by before performing the replacement using plain text manipulation.
--- That way, we leave everything else untouched.
-attachmentChangesWith :: (Text -> Maybe Text) -> [Text] -> NbpartsMd.Blocks -> Maybe [((Int, Int), Text)]
+-- instead of modifying the AST and turning it into text (which would modify some of the formatting
+-- since the AST doesn't have enough information about the formatting), we collect the positions of
+-- the image links and what to replace them with before performing the replacement using plain text
+-- manipulation. That way, we leave everything else untouched.
+attachmentChangesWith :: (Text -> Maybe Text) -> [Text] -> NbpartsMd.Blocks -> [((Int, Int), Text)]
 attachmentChangesWith transformTarget mdLines = go
   where
     mdText = Text.intercalate "\n" mdLines
-    go :: (Data b) => b -> Maybe [((Int, Int), Text)]
+    go :: (Data b) => b -> [((Int, Int), Text)]
     go node
       | Just (NbpartsMd.Inline (NbpartsMd.Image target _title (NbpartsMd.Inlines ils)) srcRange _attrs) <- Data.cast node =
-          case transformTarget target of
-            Just transformedTarget ->
-              let -- Now, we need to find the start and end indices of the image target.
+          let unSrcRange = NonEmptyList.fromList $ Commonmark.unSourceRange srcRange
+              -- Find the end index of the image's inlines, or if there are no inlines,
+              -- then just use the image's start index. This index is used as the starting
+              -- point from which to search for the target text.
+              -- Safety: This should never fail since the indices are valid.
+              searchStart = Maybe.fromJust $ sourcePosToIndices mdLines $ case ils of
+                _ :|> (NbpartsMd.Inline _ (Commonmark.SourceRange sr) _) -> snd $ last sr
+                -- TODO: Add tests for this case (empty inlines).
+                Sequence.Empty -> fst $ NonEmptyList.head unSrcRange
+           in mkChange srcRange target searchStart
+      | Just (NbpartsMd.Block (NbpartsMd.ReferenceLinkDefinition label (target, _title)) srcRange _attrs) <- Data.cast node =
+          let unSrcRange = NonEmptyList.fromList $ Commonmark.unSourceRange srcRange
+              -- Safety: This should never fail since the indices are valid.
+              -- We're simply adding the length of the label to the start index of the reference link definition.
+              -- The length of the label is added to "skip" the label.
+              searchStart = Text.length label + Maybe.fromJust (sourcePosToIndices mdLines (fst $ NonEmptyList.head unSrcRange))
+           in mkChange srcRange target searchStart
+      | otherwise = concat (Data.gmapQ go node)
 
-                  -- Find the end index of the image's inlines, or if there are no inlines,
-                  -- then just use the image's start index. This index is used as the starting
-                  -- point from which to search for the target text.
-                  -- Safety: This should never fail since the indices are valid.
-                  searchStart = Maybe.fromJust $ sourcePosToIndices mdLines $ case ils of
-                    _ :|> (NbpartsMd.Inline _ (Commonmark.SourceRange sr) _) -> snd $ last sr
-                    Sequence.Empty -> fst $ last (Commonmark.unSourceRange srcRange)
+    -- Finds the start and end indices of an image target and constructs the replacement.
+    --
+    -- If `transformTarget` fails, then we know this is not an attachment target.
+    -- `findSliceBetween` should never fail for a reference link definition. However,
+    -- it can fail for an image, in which case the target must be defined in a reference link definition.
+    -- In other words, there is no failure case for `mkChange`; hence we use `fromMaybe` to default to
+    -- an empty list.
+    mkChange :: Commonmark.SourceRange -> Text -> Int -> [((Int, Int), Text)]
+    mkChange srcRange target searchStart = Maybe.fromMaybe [] $ do
+      transformedTarget <- transformTarget target
 
-                  -- Safety: The target will always exist after the inlines.
-                  indices = Maybe.fromJust $ Util.Text.findSliceFrom searchStart mdText target
-               in Just [(indices, transformedTarget)]
-            Nothing -> Just []
-      | otherwise = concat <$> sequenceA (Data.gmapQ go node)
+      -- Now, we need to find the start and end indices of the image target.
+      let unSrcRange = NonEmptyList.fromList $ Commonmark.unSourceRange srcRange
+          -- Safety: This should never fail since the indices are valid.
+          searchEnd = Maybe.fromJust . sourcePosToIndices mdLines . snd . NonEmptyList.last $ unSrcRange
+
+      indices <- Util.Text.findSliceBetween searchStart searchEnd mdText target
+      Just [(indices, transformedTarget)]
