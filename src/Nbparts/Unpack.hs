@@ -14,8 +14,6 @@ import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
-import Data.Text.IO qualified as TIO
 import Data.Text.IO qualified as Text
 import Data.Yaml qualified as Yaml
 import Nbparts.Types qualified as Nbparts
@@ -41,8 +39,6 @@ data UnpackOptions = UnpackOptions
 
 unpack :: (MonadError Nbparts.UnpackError m, MonadIO m) => UnpackOptions -> m ()
 unpack (UnpackOptions {notebook = notebookPath, sourcesFormat, metadataFormat, outputsFormat, outputPath}) = do
-  notebookContents <- liftIO $ TIO.readFile notebookPath
-
   let exportDirectory = Maybe.fromMaybe (notebookPath <.> "nbparts") outputPath
   let sourceMediaSubdir = "media"
   let outputMediaSubdir = "outputs-media"
@@ -52,11 +48,11 @@ unpack (UnpackOptions {notebook = notebookPath, sourcesFormat, metadataFormat, o
     Directory.createDirectoryIfMissing True (exportDirectory </> outputMediaSubdir)
 
   -- Parse the notebook.
-  let notebookBytes = TE.encodeUtf8 notebookContents
+  notebookBytes <- liftIO $ LazyByteString.readFile notebookPath
   (nb :: Nbparts.SomeNotebook) <-
     liftEither $
       left (Nbparts.UnpackParseNotebookError . T.pack) $
-        Aeson.eitherDecodeStrict notebookBytes
+        Aeson.eitherDecode notebookBytes
   let withNb = Nbparts.withSomeNotebook nb
 
   -- Check notebook version.
