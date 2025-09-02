@@ -107,6 +107,12 @@ runTests unpackFormats = do
   context "when given a notebook with an attachment that has multiple mime bundle entries" $
     testIdentity "attachments-multiple-mime-bundle-entries.ipynb"
 
+  context "when given a notebook containing reference-link attachments" $
+    testIdentity "attachments-reference.ipynb"
+
+  context "when given a notebook containing reference-link attachments with unusual formatting" $
+    testIdentity "attachments-reference-unusual-formatting.ipynb"
+
 spec :: Spec
 spec = around (withSystemTempDirectory "test-nbparts") $ do
   describe "Unpack then pack" $ do
