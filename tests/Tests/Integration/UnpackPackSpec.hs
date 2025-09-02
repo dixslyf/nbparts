@@ -1,14 +1,42 @@
+{-# LANGUAGE DataKinds #-}
+
 module Tests.Integration.UnpackPackSpec where
 
 import Control.Monad.Except (runExceptT)
+import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Either qualified as Either
+import Data.Text (Text)
 import Nbparts.Pack (PackOptions (PackOptions))
 import Nbparts.Pack qualified as Nbparts
 import Nbparts.Unpack (UnpackOptions (UnpackOptions))
 import Nbparts.Unpack qualified as Nbparts
+import Network.HTTP.Req
+  ( GET (GET),
+    NoReqBody (NoReqBody),
+    Scheme (Https),
+    Url,
+    defaultHttpConfig,
+    https,
+    lbsResponse,
+    req,
+    responseBody,
+    runReq,
+    (/:),
+  )
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
-import Test.Hspec (Arg, Expectation, Spec, SpecWith, around, context, describe, it, shouldBe, shouldSatisfy)
+import Test.Hspec
+  ( Arg,
+    Expectation,
+    Spec,
+    SpecWith,
+    around,
+    context,
+    describe,
+    it,
+    shouldBe,
+    shouldSatisfy,
+  )
 import Tests.Integration.Util
   ( UnpackFormats
       ( UnpackFormats,
@@ -24,9 +52,7 @@ import Tests.Integration.Util
   )
 
 testIdentityWith' :: UnpackFormats -> FilePath -> FilePath -> Expectation
-testIdentityWith' (UnpackFormats {sourcesFormat, metadataFormat, outputsFormat}) fixture tmpdir = do
-  let nbPath = fixtureDir </> fixture
-
+testIdentityWith' (UnpackFormats {sourcesFormat, metadataFormat, outputsFormat}) nbPath tmpdir = do
   let unpackPath = tmpdir </> "unpacked"
   let repackPath = tmpdir </> "repacked.ipynb"
 
@@ -55,63 +81,117 @@ testIdentityWith' (UnpackFormats {sourcesFormat, metadataFormat, outputsFormat})
   repackedNb <- runExceptT $ readIpynb repackPath
   repackedNb `shouldBe` nb
 
+testNetIdentityWith' :: UnpackFormats -> Url scheme -> FilePath -> Expectation
+testNetIdentityWith' unpackFormats url tmpdir = do
+  lbs <- runReq defaultHttpConfig $ req GET url NoReqBody lbsResponse mempty
+  let nbBytes = responseBody lbs
+
+  let nbPath = tmpdir </> "nb.ipynb"
+  LazyByteString.writeFile nbPath nbBytes
+
+  testIdentityWith' unpackFormats nbPath tmpdir
+
+testNetIdentityWith :: UnpackFormats -> Url scheme -> SpecWith (Arg (FilePath -> Expectation))
+testNetIdentityWith unpackFormats url = it "is identity" $ testNetIdentityWith' unpackFormats url
+
 testIdentityWith :: UnpackFormats -> FilePath -> SpecWith (Arg (FilePath -> Expectation))
-testIdentityWith unpackFormats fixture = it "is identity" $ testIdentityWith' unpackFormats fixture
+testIdentityWith unpackFormats nbpath = it "is identity" $ testIdentityWith' unpackFormats nbpath
+
+testFixtureIdentityWith :: UnpackFormats -> FilePath -> SpecWith (Arg (FilePath -> Expectation))
+testFixtureIdentityWith unpackFormats fixture = testIdentityWith unpackFormats $ fixtureDir </> fixture
+
+data GitHubReleaseFile = GitHubReleaseFile
+  { owner :: Text,
+    repo :: Text,
+    tag :: Text,
+    file :: Text
+  }
+
+mkGitHubReleaseFileUrl :: GitHubReleaseFile -> Url 'Https
+mkGitHubReleaseFileUrl GitHubReleaseFile {owner, repo, tag, file} =
+  https "github.com"
+    /: owner
+    /: repo
+    /: "releases"
+    /: "download"
+    /: tag
+    /: file
 
 runTests :: UnpackFormats -> SpecWith FilePath
 runTests unpackFormats = do
-  let testIdentity = testIdentityWith unpackFormats
+  let testFixtureIdentity = testFixtureIdentityWith unpackFormats
+  let testNetIdentity = testNetIdentityWith unpackFormats
 
   context "when given an empty notebook (no sources, outputs or metadata)" $
-    testIdentity "empty.ipynb"
+    testFixtureIdentity "empty.ipynb"
 
   context "when given a notebook with erroneous outputs" $ do
-    testIdentity "error-outputs.ipynb"
+    testFixtureIdentity "error-outputs.ipynb"
 
   context "when given a notebook with empty cells" $ do
-    testIdentity "empty-cells.ipynb"
+    testFixtureIdentity "empty-cells.ipynb"
 
   context "when given a notebook containing the markdown spec" $
-    testIdentity ("commonmark-spec" </> "commonmark-spec.ipynb")
+    testFixtureIdentity ("commonmark-spec" </> "commonmark-spec.ipynb")
 
   context "when given a notebook containing stream outputs" $
-    testIdentity "stream-outputs.ipynb"
+    testFixtureIdentity "stream-outputs.ipynb"
 
   context "when given a notebook containing image outputs" $
-    testIdentity "image-outputs.ipynb"
+    testFixtureIdentity "image-outputs.ipynb"
 
   context "when given a notebook containing an interactive figure" $
-    testIdentity "interactive-figure-outputs.ipynb"
+    testFixtureIdentity "interactive-figure-outputs.ipynb"
 
   context "when given a notebook with raw cells" $ do
-    testIdentity "raw-cells.ipynb"
+    testFixtureIdentity "raw-cells.ipynb"
 
   context "when given a notebook with latex" $ do
-    testIdentity "latex.ipynb"
+    testFixtureIdentity "latex.ipynb"
 
   context "when given a notebook containing markdown comments" $ do
-    testIdentity "escape-markdown-comments.ipynb"
+    testFixtureIdentity "escape-markdown-comments.ipynb"
 
   context "when given a notebook with attachments" $
-    testIdentity "attachments.ipynb"
+    testFixtureIdentity "attachments.ipynb"
 
   context "when given a notebook with duplicate attachments" $
-    testIdentity "duplicate-attachments.ipynb"
+    testFixtureIdentity "duplicate-attachments.ipynb"
 
   context "when given a notebook with a missing attachment" $
-    testIdentity "missing-attachment.ipynb"
+    testFixtureIdentity "missing-attachment.ipynb"
 
   context "when given a notebook containing attachments with unusual formatting" $
-    testIdentity "attachments-unusual-formatting.ipynb"
+    testFixtureIdentity "attachments-unusual-formatting.ipynb"
 
   context "when given a notebook with an attachment that has multiple mime bundle entries" $
-    testIdentity "attachments-multiple-mime-bundle-entries.ipynb"
+    testFixtureIdentity "attachments-multiple-mime-bundle-entries.ipynb"
 
   context "when given a notebook containing reference-link attachments" $
-    testIdentity "attachments-reference.ipynb"
+    testFixtureIdentity "attachments-reference.ipynb"
 
   context "when given a notebook containing reference-link attachments with unusual formatting" $
-    testIdentity "attachments-reference-unusual-formatting.ipynb"
+    testFixtureIdentity "attachments-reference-unusual-formatting.ipynb"
+
+  context "when given a real-world notebook (mlp-vgg16-fashion.ipynb)" $
+    testNetIdentity $
+      mkGitHubReleaseFileUrl
+        GitHubReleaseFile
+          { owner = "dixslyf",
+            repo = "mlp-vgg16-fashion",
+            tag = "v1.0.0",
+            file = "mlp-vgg16-fashion.ipynb"
+          }
+
+  context "when given a real-world notebook (unet-nuclei-instance-segmentation.ipynb)" $
+    testNetIdentity $
+      mkGitHubReleaseFileUrl
+        GitHubReleaseFile
+          { owner = "dixslyf",
+            repo = "unet-nuclei-instance-segmentation",
+            tag = "v1.0.0",
+            file = "unet-nuclei-instance-segmentation.ipynb"
+          }
 
 spec :: Spec
 spec = around (withSystemTempDirectory "test-nbparts") $ do

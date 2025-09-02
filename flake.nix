@@ -28,6 +28,8 @@
                 pkgs.cabal-install
                 hls
                 pkgs.ormolu
+                pkgs.pkg-config
+                pkgs.zlib
 
                 (pkgs.python3.withPackages (
                   ps: with ps; [
@@ -43,8 +45,9 @@
             in
             {
               inherit packages;
+              PKG_CONFIG_PATH = "${pkgs.zlib.dev}/lib/pkgconfig";
+              C_INCLUDE_PATH = "${pkgs.zlib.dev}/include";
               LD_LIBRARY_PATH = lib.makeLibraryPath [
-                pkgs.pkg-config
                 pkgs.zlib
               ];
             }
