@@ -70,24 +70,25 @@ blockEndSourcePosToIndices mdLines srcPos = do
             (rawLine, rawColumn)
   Util.Text.lineColToIndex mdLines line column
 
-commentChangesWith :: (Text -> Text) -> [Text] -> NbpartsMd.Blocks -> Maybe [((Int, Int), Text)]
+commentChangesWith :: (Text -> Text) -> [Text] -> NbpartsMd.Blocks -> [((Int, Int), Text)]
 commentChangesWith transformComment mdLines = go
   where
     mdText = Text.intercalate "\n" mdLines
 
-    go :: (Data b) => b -> Maybe [((Int, Int), Text)]
+    go :: (Data b) => b -> [((Int, Int), Text)]
     go node
       | Just (srcRange, html) <- htmlSourceRangeAndText node,
-        Text.isPrefixOf "<!--" html = do
-          -- Inlines don't have the same quirk as blocks (the (number of lines + 1, 1) end index issue).
-          -- Applying `blockSourceRangeToIndices` to the source range for inlines should exhibit the same
-          -- behaviour as `sourceRangeToIndices`.
-          indices@(startIdx, endIdx) <- blockSourceRangeToIndices mdLines srcRange
-          -- Unfortunately, the `html` given by the Commonmark parser leaves out some whitespace for
-          -- mutiline inline HTML, so we need to manually extract the full HTML from the original text.
-          let fullHtml = mdText & Text.take endIdx & Text.drop startIdx
-          pure [(indices, transformComment fullHtml)]
-      | otherwise = concat <$> sequenceA (Data.gmapQ go node)
+        Text.isPrefixOf "<!--" html =
+          let -- Inlines don't have the same quirk as blocks (the (number of lines + 1, 1) end index issue).
+              -- Applying `blockSourceRangeToIndices` to the source range for inlines should exhibit the same
+              -- behaviour as `sourceRangeToIndices`.
+              -- Safety: The Commonmark parser and `blockSourceRangeToIndices` should always return valid indices.
+              indices@(startIdx, endIdx) = Maybe.fromJust $ blockSourceRangeToIndices mdLines srcRange
+              -- Unfortunately, the `html` given by the Commonmark parser leaves out some whitespace for
+              -- mutiline inline HTML, so we need to manually extract the full HTML from the original text.
+              fullHtml = mdText & Text.take endIdx & Text.drop startIdx
+           in [(indices, transformComment fullHtml)]
+      | otherwise = concat $ Data.gmapQ go node
 
     htmlSourceRangeAndText :: (Data a) => a -> Maybe (Commonmark.SourceRange, Text)
     htmlSourceRangeAndText node
@@ -118,25 +119,25 @@ attachmentChangesWith transformTarget mdLines = go
                 _ :|> (NbpartsMd.Inline _ (Commonmark.SourceRange sr) _) -> snd $ last sr
                 -- TODO: Add tests for this case (empty inlines).
                 Sequence.Empty -> fst $ NonEmptyList.head unSrcRange
-           in mkChange srcRange target searchStart
+           in Maybe.maybeToList $ tryMkChange srcRange target searchStart
       | Just (NbpartsMd.Block (NbpartsMd.ReferenceLinkDefinition label (target, _title)) srcRange _attrs) <- Data.cast node =
           let unSrcRange = NonEmptyList.fromList $ Commonmark.unSourceRange srcRange
               -- Safety: This should never fail since the indices are valid.
               -- We're simply adding the length of the label to the start index of the reference link definition.
               -- The length of the label is added to "skip" the label.
               searchStart = Text.length label + Maybe.fromJust (sourcePosToIndices mdLines (fst $ NonEmptyList.head unSrcRange))
-           in mkChange srcRange target searchStart
-      | otherwise = concat (Data.gmapQ go node)
+           in Maybe.maybeToList $ tryMkChange srcRange target searchStart
+      | otherwise = concat $ Data.gmapQ go node
 
     -- Finds the start and end indices of an image target and constructs the replacement.
     --
     -- If `transformTarget` fails, then we know this is not an attachment target.
     -- `findSliceBetween` should never fail for a reference link definition. However,
     -- it can fail for an image, in which case the target must be defined in a reference link definition.
-    -- In other words, there is no failure case for `mkChange`; hence we use `fromMaybe` to default to
-    -- an empty list.
-    mkChange :: Commonmark.SourceRange -> Text -> Int -> [((Int, Int), Text)]
-    mkChange srcRange target searchStart = Maybe.fromMaybe [] $ do
+    -- In other words, the `Nothing` case of `tryMkChange` doesn't indicate failure, but simply means that
+    -- there is nothing we need to replace.
+    tryMkChange :: Commonmark.SourceRange -> Text -> Int -> Maybe ((Int, Int), Text)
+    tryMkChange srcRange target searchStart = do
       transformedTarget <- transformTarget target
 
       -- Now, we need to find the start and end indices of the image target.
@@ -145,4 +146,4 @@ attachmentChangesWith transformTarget mdLines = go
           searchEnd = Maybe.fromJust . sourcePosToIndices mdLines . snd . NonEmptyList.last $ unSrcRange
 
       indices <- Util.Text.findSliceBetween searchStart searchEnd mdText target
-      Just [(indices, transformedTarget)]
+      Just (indices, transformedTarget)

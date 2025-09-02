@@ -25,11 +25,9 @@ sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Markdown source m
   let mdText = Text.concat source
   let mdLines = Text.lines mdText
 
-  -- TODO: Revisit syntax spec
   mdAst <- Util.Markdown.parseMarkdown mdText & Arrow.left Nbparts.UnpackParseMarkdownError
 
-  -- Safety: The replacements should be valid because both `commentChangesWith` always gives valid replacements.
-  let escapesReplacements = Maybe.fromJust $ Util.Markdown.commentChangesWith escapeComments mdLines mdAst
+  let escapesReplacements = Util.Markdown.commentChangesWith escapeComments mdLines mdAst
   let attachmentReplacements = case maybeAttachments of
         Just attachments ->
           Util.Markdown.attachmentChangesWith
