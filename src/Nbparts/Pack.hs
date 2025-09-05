@@ -51,7 +51,12 @@ pack (PackOptions nbpartsDir maybeOutputPath) = do
         outputsFormat
       }
     ) <-
-    liftEither =<< liftIO (left Nbparts.PackParseManifestError <$> Yaml.decodeFileEither manifestPath)
+    liftEither
+      =<< liftIO
+        ( left
+            (Nbparts.PackParseManifestError . Nbparts.ParseYamlError)
+            <$> Yaml.decodeFileEither manifestPath
+        )
 
   checkVersion nbpartsVersion
 
@@ -60,7 +65,7 @@ pack (PackOptions nbpartsDir maybeOutputPath) = do
   (sources :: [Nbparts.CellSource]) <- case sourcesFormat of
     Nbparts.FormatYaml -> do
       res <- liftIO $ Yaml.decodeFileEither sourcesPath
-      liftEither $ left Nbparts.PackParseYamlSourcesError res
+      liftEither $ left (Nbparts.PackParseYamlSourcesError . Nbparts.ParseYamlError) res
     Nbparts.FormatJson -> do
       res <- liftIO $ Aeson.eitherDecodeFileStrict sourcesPath
       liftEither $ left (Nbparts.PackParseJsonSourcesError . Text.pack) res
@@ -72,7 +77,7 @@ pack (PackOptions nbpartsDir maybeOutputPath) = do
   (metadata :: Nbparts.NotebookMetadata) <- case metadataFormat of
     Nbparts.FormatYaml -> do
       res <- liftIO $ Yaml.decodeFileEither metadataPath
-      liftEither $ left Nbparts.PackParseYamlMetadataError res
+      liftEither $ left (Nbparts.PackParseYamlMetadataError . Nbparts.ParseYamlError) res
     Nbparts.FormatJson -> do
       res <- liftIO $ Aeson.eitherDecodeFileStrict metadataPath
       liftEither $ left (Nbparts.PackParseJsonMetadataError . Text.pack) res
@@ -82,7 +87,7 @@ pack (PackOptions nbpartsDir maybeOutputPath) = do
   (unembeddedOutputs :: Nbparts.UnembeddedNotebookOutputs) <- case outputsFormat of
     Nbparts.FormatYaml -> do
       res <- liftIO $ Yaml.decodeFileEither outputsPath
-      liftEither $ left Nbparts.PackParseYamlOutputsError res
+      liftEither $ left (Nbparts.PackParseYamlOutputsError . Nbparts.ParseYamlError) res
     Nbparts.FormatJson -> do
       res <- liftIO $ Aeson.eitherDecodeFileStrict outputsPath
       liftEither $ left (Nbparts.PackParseJsonOutputsError . Text.pack) res

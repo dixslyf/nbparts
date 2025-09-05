@@ -28,27 +28,32 @@ data UnpackError
 
 data PackError
   = PackUnsupportedNotebookFormat (Int, Int)
-  | PackParseManifestError Yaml.ParseException
+  | PackParseManifestError ParseYamlError
   | PackManifestUnknownVersionError Data.Version
   | PackManifestTooNewError Data.Version
   | PackManifestTooOldError Data.Version
   | PackIllegalFormatError IllegalFormatContext Manifest.Format
-  | PackParseYamlSourcesError Yaml.ParseException
+  | PackParseYamlSourcesError ParseYamlError
   | PackParseJsonSourcesError Text
   | PackParseMarkdownSourcesError (Megaparsec.ParseErrorBundle Text ParseMarkdownSourcesError)
-  | PackParseYamlMetadataError Yaml.ParseException
+  | PackParseYamlMetadataError ParseYamlError
   | PackParseJsonMetadataError Text
-  | PackParseYamlOutputsError Yaml.ParseException
+  | PackParseYamlOutputsError ParseYamlError
   | PackParseJsonOutputsError Text
   | PackMissingCellIdError
   | PackMissingCellMetadataError Text
   | PackMissingCellOutputsError Text
   | PackCellMetadataTypeMismatch {expected :: CellMetadataTag, actual :: CellMetadataTag}
+  deriving (Show, Eq)
+
+-- Wrapper so that we can make an `Eq` instance.
+newtype ParseYamlError = ParseYamlError Yaml.ParseException
   deriving (Show)
 
-instance Eq PackError where
-  (==) a b = show a == show b
-  (/=) a b = show a /= show b
+-- The author of `yaml` performs equality checks with the `Show` instance as well,
+-- so this should be fine. https://github.com/snoyberg/yaml/issues/189
+instance Eq ParseYamlError where
+  a == b = show a == show b
 
 data IllegalFormatContext = IllegalFormatSources | IllegalFormatMetadata | IllegalFormatOutputs
   deriving (Show, Eq, Ord)
@@ -93,7 +98,7 @@ renderError err = case err of
       <> Text.pack (show major)
       <> "."
       <> Text.pack (show minor)
-  PackError (PackParseManifestError parseErr) -> "Failed to parse manifest: " <> Text.pack (Exception.displayException parseErr)
+  PackError (PackParseManifestError (ParseYamlError ex)) -> "Failed to parse manifest: " <> Text.pack (Exception.displayException ex)
   PackError (PackManifestUnknownVersionError version) -> "Unknown manifest version: " <> Text.pack (Version.showVersion version)
   PackError (PackManifestTooNewError version) ->
     "Manifest version ("
@@ -108,12 +113,12 @@ renderError err = case err of
       <> Text.pack (Version.showVersion currentNbpartsVersion)
       <> ")"
   PackError (PackIllegalFormatError ctx fmt) -> "Illegal format for " <> renderIllegalFormatContext ctx <> ":" <> renderFormat fmt
-  PackError (PackParseYamlSourcesError parseErr) -> "Failed to parse sources: " <> Text.pack (Exception.displayException parseErr)
+  PackError (PackParseYamlSourcesError (ParseYamlError ex)) -> "Failed to parse sources: " <> Text.pack (Exception.displayException ex)
   PackError (PackParseJsonSourcesError parseErr) -> "Failed to parse sources: " <> parseErr
   PackError (PackParseMarkdownSourcesError errBundle) -> Text.pack $ Megaparsec.errorBundlePretty errBundle
-  PackError (PackParseYamlMetadataError parseErr) -> "Failed to parse metadata: " <> Text.pack (Exception.displayException parseErr)
+  PackError (PackParseYamlMetadataError (ParseYamlError ex)) -> "Failed to parse metadata: " <> Text.pack (Exception.displayException ex)
   PackError (PackParseJsonMetadataError parseErr) -> "Failed to parse metadata: " <> parseErr
-  PackError (PackParseYamlOutputsError parseErr) -> "Failed to parse outputs: " <> Text.pack (Exception.displayException parseErr)
+  PackError (PackParseYamlOutputsError (ParseYamlError ex)) -> "Failed to parse outputs: " <> Text.pack (Exception.displayException ex)
   PackError (PackParseJsonOutputsError parseErr) -> "Failed to parse outputs: " <> parseErr
   PackError PackMissingCellIdError -> "Markdown content contains missing cell ID"
   PackError (PackMissingCellMetadataError cellId) -> "Could not find metadata for cell ID: " <> cellId
