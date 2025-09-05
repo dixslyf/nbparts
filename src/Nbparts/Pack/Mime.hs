@@ -4,11 +4,7 @@ import Data.ByteString qualified as ByteString
 import Data.Coerce (coerce)
 import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
-import Data.Text (Text)
-import Data.Text qualified as Text
-import Data.Text.Encoding qualified as Text
 import Nbparts.Types qualified as Nbparts
-import Network.Mime qualified as Mime
 import System.FilePath ((</>))
 
 adjustMimeAttachmentsPaths :: FilePath -> Nbparts.UnembeddedMimeAttachments -> Nbparts.UnembeddedMimeAttachments
@@ -34,11 +30,3 @@ embedMimeData (Nbparts.BinaryData path) = do
   return $ Ipynb.BinaryData bytes
 embedMimeData (Nbparts.TextualData text) = pure $ Ipynb.TextualData text
 embedMimeData (Nbparts.JsonData value) = pure $ Ipynb.JsonData value
-
--- TODO: Should the mime bundle really be a singleton? Is it possible for there to be multiple entries?
-mediaPathToMimeBundle :: Text -> Nbparts.UnembeddedMimeBundle
-mediaPathToMimeBundle fp =
-  coerce $
-    Map.singleton
-      (Text.decodeUtf8 $ Mime.defaultMimeLookup fp)
-      (Nbparts.BinaryData (Text.unpack fp))

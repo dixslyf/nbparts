@@ -117,7 +117,6 @@ attachmentChangesWith transformTarget mdLines = go
               -- Safety: This should never fail since the indices are valid.
               searchStart = Maybe.fromJust $ sourcePosToIndices mdLines $ case ils of
                 _ :|> (NbpartsMd.Inline _ (Commonmark.SourceRange sr) _) -> snd $ last sr
-                -- TODO: Add tests for this case (empty inlines).
                 Sequence.Empty -> fst $ NonEmptyList.head unSrcRange
            in Maybe.maybeToList $ tryMkChange srcRange target searchStart
       | Just (NbpartsMd.Block (NbpartsMd.ReferenceLinkDefinition label (target, _title)) srcRange _attrs) <- Data.cast node =
