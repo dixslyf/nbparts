@@ -17,8 +17,14 @@ fillMetadata (Nbparts.NotebookMetadata formatMajor formatMinor nbMeta cellsMeta)
 
 fillCellMetadata :: Map Text Nbparts.CellMetadata -> Ipynb.Cell a -> Either Nbparts.PackError (Ipynb.Cell a)
 fillCellMetadata cellsMeta (Ipynb.Cell cellType maybeCellId source _ attachments) = do
-  cellId <- maybe (Left Nbparts.PackMissingCellIdError) Right maybeCellId
-  cellMeta <- maybe (Left $ Nbparts.PackMissingCellMetadataError cellId) Right (Map.lookup cellId cellsMeta)
+  cellId <- case maybeCellId of
+    Just cId -> Right cId
+    Nothing -> Left Nbparts.PackMissingCellIdError
+  let cellMeta = case (Map.lookup cellId cellsMeta, cellType) of
+        (Just meta, _) -> meta
+        -- If we can't find the metadata, assume there is none.
+        (Nothing, Ipynb.Code _ _) -> Nbparts.emptyCodeMetadata
+        (Nothing, _) -> Nbparts.emptyGenericMetadata
   case (cellType, cellMeta) of
     -- Code cell expects CodeCellMetadata
     (Ipynb.Code _ outputs, Nbparts.CodeCellMetadata exeCount meta) ->

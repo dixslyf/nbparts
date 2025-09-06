@@ -1,6 +1,8 @@
 module Nbparts.Types.Metadata
   ( NotebookMetadata (..),
     CellMetadata (..),
+    emptyCodeMetadata,
+    emptyGenericMetadata,
   )
 where
 
@@ -8,6 +10,7 @@ import Data.Aeson (Options (constructorTagModifier, sumEncoding))
 import Data.Aeson qualified as Aeson
 import Data.Ipynb qualified as Ipynb
 import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Text (Text)
 import GHC.Generics (Generic)
 
@@ -20,9 +23,15 @@ data NotebookMetadata = NotebookMetadata
   deriving (Generic, Show, Eq, Ord)
 
 data CellMetadata
-  = CodeCellMetadata {executionCount :: Maybe Int, genericMetadata :: Ipynb.JSONMeta}
+  = CodeCellMetadata {executionCount :: Maybe Int, meta :: Ipynb.JSONMeta}
   | GenericCellMetadata Ipynb.JSONMeta
   deriving (Generic, Show, Eq, Ord)
+
+emptyCodeMetadata :: CellMetadata
+emptyCodeMetadata = CodeCellMetadata Nothing $ Ipynb.JSONMeta Map.empty
+
+emptyGenericMetadata :: CellMetadata
+emptyGenericMetadata = GenericCellMetadata $ Ipynb.JSONMeta Map.empty
 
 instance Aeson.ToJSON NotebookMetadata
 
@@ -40,10 +49,10 @@ jsonOptions =
     { sumEncoding =
         Aeson.TaggedObject
           { tagFieldName = "type",
-            contentsFieldName = "value"
+            contentsFieldName = "meta"
           },
       constructorTagModifier = \case
-        "CodeCellMetadata" -> "codeMetadata"
-        "GenericCellMetadata" -> "genericMetadata"
+        "CodeCellMetadata" -> "code"
+        "GenericCellMetadata" -> "generic"
         other -> other
     }

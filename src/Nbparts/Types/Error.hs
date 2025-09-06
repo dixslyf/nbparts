@@ -41,8 +41,6 @@ data PackError
   | PackParseYamlOutputsError ParseYamlError
   | PackParseJsonOutputsError Text
   | PackMissingCellIdError
-  | PackMissingCellMetadataError Text
-  | PackMissingCellOutputsError Text
   | PackCellMetadataTypeMismatch {expected :: CellMetadataTag, actual :: CellMetadataTag}
   deriving (Show, Eq)
 
@@ -121,8 +119,6 @@ renderError err = case err of
   PackError (PackParseYamlOutputsError (ParseYamlError ex)) -> "Failed to parse outputs: " <> Text.pack (Exception.displayException ex)
   PackError (PackParseJsonOutputsError parseErr) -> "Failed to parse outputs: " <> parseErr
   PackError PackMissingCellIdError -> "Markdown content contains missing cell ID"
-  PackError (PackMissingCellMetadataError cellId) -> "Could not find metadata for cell ID: " <> cellId
-  PackError (PackMissingCellOutputsError cellId) -> "Could not find outputs for cell ID: " <> cellId
   PackError (PackCellMetadataTypeMismatch expected actual) ->
     "Cell metadata type mismatch. Expected: "
       <> renderCellMetadataTag expected

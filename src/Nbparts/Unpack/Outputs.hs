@@ -5,6 +5,7 @@ import Control.Monad.State.Strict (MonadState)
 import Control.Monad.State.Strict qualified as State
 import Data.ByteString (ByteString)
 import Data.Ipynb qualified as Ipynb
+import Data.List qualified as List
 import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
 import Data.Text (Text)
@@ -28,7 +29,9 @@ collectOutputs subdir (Ipynb.Notebook _meta _format cells) = State.runStateT nbO
       pure (Nbparts.UnembeddedNotebookOutputs $ Map.fromList entries)
 
     extractCodeOutputs :: Ipynb.Cell a -> Maybe (Maybe Text, [Ipynb.Output a])
-    extractCodeOutputs (Ipynb.Cell (Ipynb.Code _ outputs) maybeCellId _ _ _) = Just (maybeCellId, outputs)
+    extractCodeOutputs (Ipynb.Cell (Ipynb.Code _ outputs) maybeCellId _ _ _)
+      | List.null outputs = Nothing -- Filter out cells with empty outputs to avoid serialising empty lists.
+      | otherwise = Just (maybeCellId, outputs)
     extractCodeOutputs _ = Nothing
 
 unembedCodeOutputs ::

@@ -5,7 +5,7 @@ module Nbparts.Types.Sources
   )
 where
 
-import Data.Aeson (Options (constructorTagModifier, sumEncoding))
+import Data.Aeson (Options (constructorTagModifier, omitNothingFields, sumEncoding))
 import Data.Aeson qualified as Aeson
 import Data.Text (Text)
 import GHC.Generics (Generic)
@@ -53,6 +53,7 @@ jsonOptions =
           { tagFieldName = "type",
             contentsFieldName = "value"
           },
+      omitNothingFields = True, -- So that `attachments: null` doesn't show up everywhere.
       constructorTagModifier = \case
         "Markdown" -> "markdown"
         "Raw" -> "raw"
