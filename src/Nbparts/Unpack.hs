@@ -1,7 +1,6 @@
 module Nbparts.Unpack where
 
 import Control.Arrow (left)
-import Control.Monad ((>=>))
 import Control.Monad qualified as Monad
 import Control.Monad.Error.Class (MonadError (throwError), liftEither)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -9,6 +8,7 @@ import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty (confIndent)
 import Data.Aeson.Encode.Pretty qualified as AesonPretty
 import Data.Aeson.KeyMap qualified as Aeson.KeyMap
+import Data.ByteString qualified as ByteString
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
@@ -67,8 +67,8 @@ unpack (UnpackOptions {notebook = notebookPath, sourcesFormat, metadataFormat, o
             Manifest.outputsFormat = outputsFormat
           }
   metadata <- liftEither $ withNb Nbparts.collectMetadata
-  sources <- withNb (Nbparts.collectSources exportDirectory sourceMediaSubdir)
-  outputs <- withNb (liftEither . Nbparts.collectOutputs >=> liftIO . Nbparts.unembedOutputs exportDirectory outputMediaSubdir)
+  (sources, sourceMedia) <- liftEither $ withNb (Nbparts.collectSources sourceMediaSubdir)
+  (outputs, outputMedia) <- liftEither $ withNb (Nbparts.collectOutputs outputMediaSubdir)
 
   -- Export manifest, sources, metadata and outputs.
   let yamlOptions = Yaml.setStringStyle nbpartsYamlStringStyle Yaml.defaultEncodeOptions
@@ -86,6 +86,7 @@ unpack (UnpackOptions {notebook = notebookPath, sourcesFormat, metadataFormat, o
       let lang = Maybe.fromMaybe "" $ extractLanguage metadata
       markdownText <- liftEither $ Nbparts.sourcesToMarkdown lang sources
       liftIO $ Text.writeFile sourcesPath markdownText
+  liftIO $ mapM_ (\(path, bytes) -> ByteString.writeFile (exportDirectory </> path) bytes) sourceMedia
 
   let metadataPath = mkExportPath "metadata" metadataFormat
   liftIO $ case metadataFormat of
@@ -98,6 +99,7 @@ unpack (UnpackOptions {notebook = notebookPath, sourcesFormat, metadataFormat, o
     Nbparts.FormatYaml -> Yaml.encodeFileWith yamlOptions outputsPath outputs
     Nbparts.FormatJson -> exportJson outputsPath outputs
     _ -> error $ "Illegal outputs format: " <> show outputsFormat
+  liftIO $ mapM_ (\(path, bytes) -> ByteString.writeFile (exportDirectory </> path) bytes) outputMedia
 
 hasOnlyOneNewline :: T.Text -> Bool
 hasOnlyOneNewline text = T.length (T.filter (== '\n') text) == 1

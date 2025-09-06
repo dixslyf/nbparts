@@ -1,6 +1,9 @@
 module Nbparts.Unpack.Outputs where
 
-import Data.Coerce (coerce)
+import Control.Monad.Error.Class (MonadError, throwError)
+import Control.Monad.State.Strict (MonadState)
+import Control.Monad.State.Strict qualified as State
+import Data.ByteString (ByteString)
 import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
@@ -8,27 +11,41 @@ import Data.Text (Text)
 import Nbparts.Types qualified as Nbparts
 import Nbparts.Unpack.Mime qualified as Nbparts
 
-collectOutputs :: Ipynb.Notebook a -> Either Nbparts.UnpackError (Nbparts.NotebookOutputs a)
-collectOutputs (Ipynb.Notebook _meta _format cells) = Nbparts.NotebookOutputs . Map.fromList <$> sequence (Maybe.mapMaybe toEntry cells)
+collectOutputs ::
+  FilePath ->
+  Ipynb.Notebook a ->
+  Either Nbparts.UnpackError (Nbparts.UnembeddedNotebookOutputs, [(FilePath, ByteString)])
+collectOutputs subdir (Ipynb.Notebook _meta _format cells) = State.runStateT nbOutputsState []
   where
-    toEntry :: Ipynb.Cell a -> Maybe (Either Nbparts.UnpackError (Text, [Ipynb.Output a]))
-    toEntry (Ipynb.Cell (Ipynb.Code _exeCount outputs) maybeCellId _ _ _) = Just $ case maybeCellId of
-      Just cellId -> Right (cellId, outputs)
-      Nothing -> Left Nbparts.UnpackMissingCellIdError
-    toEntry _ = Nothing
+    nbOutputsState ::
+      ( MonadState [(FilePath, ByteString)] m,
+        MonadError Nbparts.UnpackError m
+      ) =>
+      m Nbparts.UnembeddedNotebookOutputs
+    nbOutputsState = do
+      let codeOutputs = Maybe.mapMaybe extractCodeOutputs cells
+      entries <- traverse (uncurry (unembedCodeOutputs subdir)) codeOutputs
+      pure (Nbparts.UnembeddedNotebookOutputs $ Map.fromList entries)
 
-unembedOutputs :: FilePath -> FilePath -> Nbparts.NotebookOutputs a -> IO Nbparts.UnembeddedNotebookOutputs
-unembedOutputs dirPrefix subdir =
-  coerce $
-    fmap Nbparts.UnembeddedNotebookOutputs
-      . traverse (mapM (unembedOutput dirPrefix subdir))
+    extractCodeOutputs :: Ipynb.Cell a -> Maybe (Maybe Text, [Ipynb.Output a])
+    extractCodeOutputs (Ipynb.Cell (Ipynb.Code _ outputs) maybeCellId _ _ _) = Just (maybeCellId, outputs)
+    extractCodeOutputs _ = Nothing
 
-unembedOutput :: FilePath -> FilePath -> Ipynb.Output a -> IO Nbparts.UnembeddedCellOutput
-unembedOutput _ _ (Ipynb.Stream streamName (Ipynb.Source streamText)) = pure $ Nbparts.Stream streamName streamText
-unembedOutput dirPrefix subdir (Ipynb.DisplayData displayData displayMetadata) = do
-  unembeddedDisplayData <- Nbparts.unembedMimeBundle dirPrefix subdir displayData
-  return $ Nbparts.DisplayData unembeddedDisplayData displayMetadata
-unembedOutput dirPrefix subdir (Ipynb.ExecuteResult executeCount executeData executeMetadata) = do
-  unembeddedExecuteData <- Nbparts.unembedMimeBundle dirPrefix subdir executeData
-  return $ Nbparts.ExecuteResult executeCount unembeddedExecuteData executeMetadata
-unembedOutput _ _ (Ipynb.Err errName errValue errTraceback) = pure $ Nbparts.Err errName errValue errTraceback
+unembedCodeOutputs ::
+  (MonadState [(FilePath, ByteString)] m, MonadError Nbparts.UnpackError m) =>
+  FilePath ->
+  Maybe Text ->
+  [Ipynb.Output a] ->
+  m (Text, [Nbparts.UnembeddedCellOutput])
+unembedCodeOutputs subdir (Just cellId) outputs = (cellId,) <$> traverse (unembedOutput subdir) outputs
+unembedCodeOutputs _ Nothing _ = throwError Nbparts.UnpackMissingCellIdError
+
+unembedOutput :: (MonadState [(FilePath, ByteString)] m) => FilePath -> Ipynb.Output a -> m Nbparts.UnembeddedCellOutput
+unembedOutput _ (Ipynb.Stream streamName (Ipynb.Source streamText)) = pure $ Nbparts.Stream streamName streamText
+unembedOutput subdir (Ipynb.DisplayData displayData metadata) = do
+  uDisplayData <- Nbparts.unembedMimeBundle subdir displayData
+  pure $ Nbparts.DisplayData uDisplayData metadata
+unembedOutput subdir (Ipynb.ExecuteResult executeCount executeData metadata) = do
+  uExData <- Nbparts.unembedMimeBundle subdir executeData
+  pure $ Nbparts.ExecuteResult executeCount uExData metadata
+unembedOutput _ (Ipynb.Err errName errValue errTraceback) = pure $ Nbparts.Err errName errValue errTraceback

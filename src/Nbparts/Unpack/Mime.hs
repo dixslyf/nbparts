@@ -1,5 +1,7 @@
 module Nbparts.Unpack.Mime where
 
+import Control.Monad.State.Strict (MonadState)
+import Control.Monad.State.Strict qualified as State
 import Crypto.Hash qualified as Hash
 import Data.ByteArray qualified as ByteArray
 import Data.ByteString (ByteString)
@@ -16,13 +18,12 @@ import Nbparts.Types qualified as Nbparts
 import Network.Mime qualified as Mime
 import System.FilePath ((</>))
 
-unembedMimeAttachments :: FilePath -> FilePath -> Ipynb.MimeAttachments -> IO Nbparts.UnembeddedMimeAttachments
-unembedMimeAttachments dirPrefix subdir =
-  coerce $
-    fmap Nbparts.UnembeddedMimeAttachments
-      . Map.traverseWithKey
-        (\attName bundle -> unembedMimeBundleWith (genFileName attName) dirPrefix subdir bundle)
+unembedMimeAttachments :: (MonadState [(FilePath, ByteString)] m) => FilePath -> Ipynb.MimeAttachments -> m Nbparts.UnembeddedMimeAttachments
+unembedMimeAttachments subdir mimeAtts = Nbparts.UnembeddedMimeAttachments <$> Map.traverseWithKey go (coerce mimeAtts)
   where
+    go :: (MonadState [(FilePath, ByteString)] m) => Text -> Ipynb.MimeBundle -> m Nbparts.UnembeddedMimeBundle
+    go attName = unembedMimeBundleWith (genFileName attName) subdir
+
     -- Include the attachment name in the bytes before hashing so that
     -- different attachments with the same content have different hashes.
     -- This is needed so that we know which attachment to reference when
@@ -30,34 +31,41 @@ unembedMimeAttachments dirPrefix subdir =
     genFileName :: Text -> Text -> ByteString -> FilePath
     genFileName attName mimeType bytes = binaryOutputFileName mimeType (Text.encodeUtf8 attName <> bytes)
 
-unembedMimeBundleWith :: (Text -> ByteString -> FilePath) -> FilePath -> FilePath -> Ipynb.MimeBundle -> IO Nbparts.UnembeddedMimeBundle
-unembedMimeBundleWith genFileName dirPrefix subdir =
-  coerce $
-    fmap Nbparts.UnembeddedMimeBundle
-      . Map.traverseWithKey
-        (unembedMimeDataWith genFileName dirPrefix subdir)
+unembedMimeBundleWith ::
+  (MonadState [(FilePath, ByteString)] m) =>
+  (Text -> ByteString -> FilePath) ->
+  FilePath ->
+  Ipynb.MimeBundle ->
+  m Nbparts.UnembeddedMimeBundle
+unembedMimeBundleWith genFileName subdir mimeBundle = Nbparts.UnembeddedMimeBundle <$> Map.traverseWithKey go (coerce mimeBundle)
+  where
+    go :: (MonadState [(FilePath, ByteString)] m) => Ipynb.MimeType -> Ipynb.MimeData -> m Nbparts.UnembeddedMimeData
+    go mimeType mimeData = do
+      let (uMimeData, maybeExport) = unembedMimeDataWith genFileName subdir mimeType mimeData
+      State.modify (Maybe.maybe id (:) maybeExport)
+      pure uMimeData
 
-unembedMimeBundle :: FilePath -> FilePath -> Ipynb.MimeBundle -> IO Nbparts.UnembeddedMimeBundle
+unembedMimeBundle :: (MonadState [(FilePath, ByteString)] m) => FilePath -> Ipynb.MimeBundle -> m Nbparts.UnembeddedMimeBundle
 unembedMimeBundle = unembedMimeBundleWith binaryOutputFileName
 
 unembedMimeDataWith ::
   (Text -> ByteString -> FilePath) ->
   FilePath ->
+  Ipynb.MimeType ->
+  Ipynb.MimeData ->
+  (Nbparts.UnembeddedMimeData, Maybe (FilePath, ByteString))
+unembedMimeDataWith genFileName subdir mimetype (Ipynb.BinaryData bytes) =
+  let filename = genFileName mimetype bytes
+      filepath = subdir </> filename
+   in (Nbparts.BinaryData filepath, Just (filepath, bytes))
+unembedMimeDataWith _ _ _ (Ipynb.TextualData text) = (Nbparts.TextualData text, Nothing)
+unembedMimeDataWith _ _ _ (Ipynb.JsonData value) = (Nbparts.JsonData value, Nothing)
+
+unembedMimeData ::
   FilePath ->
   Ipynb.MimeType ->
   Ipynb.MimeData ->
-  IO Nbparts.UnembeddedMimeData
-unembedMimeDataWith genFileName dirPrefix subdir mimetype (Ipynb.BinaryData bytes) = do
-  let filename = genFileName mimetype bytes
-
-  let relPath = subdir </> filename
-  let writePath = dirPrefix </> relPath
-  ByteString.writeFile writePath bytes
-  return $ Nbparts.BinaryData relPath
-unembedMimeDataWith _ _ _ _ (Ipynb.TextualData text) = pure $ Nbparts.TextualData text
-unembedMimeDataWith _ _ _ _ (Ipynb.JsonData value) = pure $ Nbparts.JsonData value
-
-unembedMimeData :: FilePath -> FilePath -> Ipynb.MimeType -> Ipynb.MimeData -> IO Nbparts.UnembeddedMimeData
+  (Nbparts.UnembeddedMimeData, Maybe (FilePath, ByteString))
 unembedMimeData = unembedMimeDataWith binaryOutputFileName
 
 binaryOutputFileName :: Text -> ByteString -> FilePath
