@@ -1,6 +1,5 @@
 module Nbparts.Pack where
 
-import Control.Applicative (liftA3)
 import Control.Arrow (left)
 import Control.Monad ((>=>))
 import Control.Monad.Error.Class (MonadError (throwError), liftEither)
@@ -113,28 +112,30 @@ pack (PackOptions nbpartsDir maybeOutputPath) = do
 checkVersion :: (MonadError Nbparts.PackError m, MonadIO m) => Version -> m ()
 checkVersion nbpartsVersion = do
   let Version branch _ = nbpartsVersion
-      maybeMajor = branch !? 0
-      maybeMinor = branch !? 1
-      maybePatch = branch !? 2
+      maybeMajorA = branch !? 0
+      maybeMajorB = branch !? 1
+      maybeMinor = branch !? 2
+      maybePatch = branch !? 3
 
-  (major, minor, patch) <- case liftA3 (,,) maybeMajor maybeMinor maybePatch of
+  (majorA, majorB, minor, patch) <- case (,,,) <$> maybeMajorA <*> maybeMajorB <*> maybeMinor <*> maybePatch of
     Just branches -> pure branches
     Nothing -> throwError $ Nbparts.PackManifestUnknownVersionError nbpartsVersion
 
-  compareVersion major minor patch
+  compareVersion majorA majorB minor patch
   where
     Version cBranch' _ = currentNbpartsVersion
     cBranch = NonEmptyList.fromList cBranch'
     -- Safety: The known current nbparts version will always have a major, minor and patch version.
     -- The same cannot be said for the version parsed from the manifest, however.
-    cMajor = NonEmptyList.head cBranch
-    cMinor = cBranch NonEmptyList.!! 1
-    cPatch = cBranch NonEmptyList.!! 2
+    cMajorA = NonEmptyList.head cBranch
+    cMajorB = cBranch NonEmptyList.!! 1
+    cMinor = cBranch NonEmptyList.!! 2
+    cPatch = cBranch NonEmptyList.!! 3
 
-    compareVersion :: (MonadError Nbparts.PackError m, MonadIO m) => Int -> Int -> Int -> m ()
-    compareVersion major minor patch
-      | cMajor > major = throwError $ Nbparts.PackManifestTooOldError nbpartsVersion
-      | cMajor < major = throwError $ Nbparts.PackManifestTooNewError nbpartsVersion
+    compareVersion :: (MonadError Nbparts.PackError m, MonadIO m) => Int -> Int -> Int -> Int -> m ()
+    compareVersion majorA majorB minor patch
+      | (cMajorA, cMajorB) > (majorA, majorB) = throwError $ Nbparts.PackManifestTooOldError nbpartsVersion
+      | (cMajorA, cMajorB) < (majorA, majorB) = throwError $ Nbparts.PackManifestTooNewError nbpartsVersion
       | cMinor < minor = liftIO $ warnManifestNewer "minor"
       | cPatch < patch = liftIO $ warnManifestNewer "patch"
       -- Newer minor or patch version should be backwards compatible.
