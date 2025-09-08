@@ -56,7 +56,7 @@ library
         Paths_nbparts
     build-depends:
         directory ^>=1.3.8.5,
-        base ^>=4.19.2.0,
+        base >=4.19 && <5,
         mtl ^>=2.3.1,
         filepath ^>=1.4.301.0,
         text ^>=2.1.1,
@@ -85,7 +85,7 @@ executable nbparts
         Nbparts.Cli.Options
     build-depends:
         nbparts,
-        base ^>=4.19.2.0,
+        base >=4.19 && <5,
         mtl ^>=2.3.1,
         text ^>=2.1.1,
         optparse-applicative ^>=0.19.0.0
@@ -99,7 +99,7 @@ test-suite test-nbparts
     hs-source-dirs: tests
     build-depends:
         nbparts,
-        base ^>=4.19.2.0,
+        base >=4.19 && <5,
         bytestring ^>=0.12.1.0,
         mtl ^>=2.3.1,
         text ^>=2.1.1,
