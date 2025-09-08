@@ -8,6 +8,8 @@ license-file: LICENSE
 author: Dixon Sean Low Yan Feng
 maintainer: root@dixslyf.dev
 -- copyright:
+tested-with:
+    GHC == 9.8
 build-type: Simple
 -- extra-doc-files:
 -- extra-source-files:

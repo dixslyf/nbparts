@@ -1,0 +1,52 @@
+---
+name: Build
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  generate-matrix:
+    name: Generate GHC and OS matrix
+    outputs:
+      matrix: ${{ steps.gen-matrix.outputs.matrix }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GHC and OS matrix
+        id: gen-matrix
+        uses: kleidukos/get-tested@v0.1.7.1
+        with:
+          cabal-file: nbparts.cabal
+          ubuntu-version: "24.04"
+          windows-version: "2025"
+          macos-version: "15"
+          version: 0.1.7.1
+  build:
+    name: Build with GHC ${{ matrix.ghc }} on ${{ matrix.os }}
+    needs: generate-matrix
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Haskell
+        id: setup-haskell
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: ${{ matrix.ghc }}
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          key: ghc-${{ matrix.ghc }}-${{ runner.os }}-${{ hashFiles('**/plan.json') }}
+          path: ${{ steps.setup-haskell.outputs.cabal-store }}
+          restore-keys: ghc-${{ matrix.ghc }}-${{ runner.os }}-
+
+      - name: Build
+        run: cabal build
+
+      - name: Test
+        run: cabal test --test-options "+RTS -N -RTS"
