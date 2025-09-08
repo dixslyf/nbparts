@@ -9,8 +9,7 @@ import Hedgehog (Gen, forAll, tripping)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Nbparts.Types.Sources
-  (
-    CellMarker (CellMarker),
+  ( CellMarker (CellMarker),
     CellSource (CellSource),
     CellType
       ( Code,
