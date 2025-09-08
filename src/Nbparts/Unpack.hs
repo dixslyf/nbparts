@@ -16,12 +16,20 @@ import Data.Maybe qualified as Maybe
 import Data.Text qualified as T
 import Data.Text.IO qualified as Text
 import Data.Yaml qualified as Yaml
-import Nbparts.Types qualified as Nbparts
+import Nbparts.Types
+  ( Format (FormatJson, FormatMarkdown, FormatYaml),
+    NotebookMetadata (NotebookMetadata),
+    SomeNotebook,
+    UnpackError (UnpackParseNotebookError, UnpackUnsupportedNotebookFormat),
+    defManifest,
+    formatExtension,
+    withSomeNotebook,
+  )
 import Nbparts.Types.Manifest qualified as Manifest
-import Nbparts.Unpack.Metadata qualified as Nbparts
-import Nbparts.Unpack.Outputs qualified as Nbparts
-import Nbparts.Unpack.Sources qualified as Nbparts
-import Nbparts.Unpack.Sources.Markdown qualified as Nbparts
+import Nbparts.Unpack.Metadata (collectMetadata, extractNotebookVersion)
+import Nbparts.Unpack.Outputs (collectOutputs)
+import Nbparts.Unpack.Sources (collectSources)
+import Nbparts.Unpack.Sources.Markdown (sourcesToMarkdown)
 import System.Directory qualified as Directory
 import System.FilePath ((<.>), (</>))
 import Text.Libyaml qualified as Libyaml
@@ -30,16 +38,16 @@ minNotebookFormat :: (Int, Int)
 minNotebookFormat = (4, 0)
 
 data UnpackOptions = UnpackOptions
-  { notebook :: FilePath,
-    sourcesFormat :: Nbparts.Format,
-    metadataFormat :: Nbparts.Format,
-    outputsFormat :: Nbparts.Format,
+  { notebookPath :: FilePath,
+    sourcesFormat :: Format,
+    metadataFormat :: Format,
+    outputsFormat :: Format,
     outputPath :: Maybe FilePath
   }
 
-unpack :: (MonadError Nbparts.UnpackError m, MonadIO m) => UnpackOptions -> m ()
-unpack (UnpackOptions {notebook = notebookPath, sourcesFormat, metadataFormat, outputsFormat, outputPath}) = do
-  let exportDirectory = Maybe.fromMaybe (notebookPath <.> "nbparts") outputPath
+unpack :: (MonadError UnpackError m, MonadIO m) => UnpackOptions -> m ()
+unpack opts = do
+  let exportDirectory = Maybe.fromMaybe (opts.notebookPath <.> "nbparts") opts.outputPath
   let sourceMediaSubdir = "media"
   let outputMediaSubdir = "outputs-media"
   liftIO $ do
@@ -48,57 +56,57 @@ unpack (UnpackOptions {notebook = notebookPath, sourcesFormat, metadataFormat, o
     Directory.createDirectoryIfMissing True (exportDirectory </> outputMediaSubdir)
 
   -- Parse the notebook.
-  notebookBytes <- liftIO $ LazyByteString.readFile notebookPath
-  (nb :: Nbparts.SomeNotebook) <-
+  notebookBytes <- liftIO $ LazyByteString.readFile opts.notebookPath
+  (nb :: SomeNotebook) <-
     liftEither $
-      left (Nbparts.UnpackParseNotebookError . T.pack) $
+      left (UnpackParseNotebookError . T.pack) $
         Aeson.eitherDecode notebookBytes
-  let withNb = Nbparts.withSomeNotebook nb
+  let withNb = withSomeNotebook nb
 
   -- Check notebook version.
-  let format = withNb Nbparts.extractNotebookVersion
-  Monad.when (format < minNotebookFormat) $ throwError (Nbparts.UnpackUnsupportedNotebookFormat format)
+  let format = withNb extractNotebookVersion
+  Monad.when (format < minNotebookFormat) $ throwError (UnpackUnsupportedNotebookFormat format)
 
   -- Collect manifest, sources, metadata and outputs.
   let manifest =
-        Manifest.defManifest
-          { Manifest.sourcesFormat = sourcesFormat,
-            Manifest.metadataFormat = metadataFormat,
-            Manifest.outputsFormat = outputsFormat
+        defManifest
+          { Manifest.sourcesFormat = opts.sourcesFormat,
+            Manifest.metadataFormat = opts.metadataFormat,
+            Manifest.outputsFormat = opts.outputsFormat
           }
-  metadata <- liftEither $ withNb Nbparts.collectMetadata
-  (sources, sourceMedia) <- liftEither $ withNb (Nbparts.collectSources sourceMediaSubdir)
-  (outputs, outputMedia) <- liftEither $ withNb (Nbparts.collectOutputs outputMediaSubdir)
+  metadata <- liftEither $ withNb collectMetadata
+  (sources, sourceMedia) <- liftEither $ withNb (collectSources sourceMediaSubdir)
+  (outputs, outputMedia) <- liftEither $ withNb (collectOutputs outputMediaSubdir)
 
   -- Export manifest, sources, metadata and outputs.
   let yamlOptions = Yaml.setStringStyle nbpartsYamlStringStyle Yaml.defaultEncodeOptions
-  let mkExportPath :: FilePath -> Nbparts.Format -> FilePath
-      mkExportPath fname fmt = exportDirectory </> fname <.> Nbparts.formatExtension fmt
+  let mkExportPath :: FilePath -> Format -> FilePath
+      mkExportPath fname fmt = exportDirectory </> fname <.> formatExtension fmt
 
-  let manifestPath = mkExportPath "nbparts" Nbparts.FormatYaml
+  let manifestPath = mkExportPath "nbparts" FormatYaml
   liftIO $ Yaml.encodeFile manifestPath manifest
 
-  let sourcesPath = mkExportPath "sources" sourcesFormat
-  case sourcesFormat of
-    Nbparts.FormatYaml -> liftIO $ Yaml.encodeFileWith yamlOptions sourcesPath sources
-    Nbparts.FormatJson -> liftIO $ exportJson sourcesPath sources
-    Nbparts.FormatMarkdown -> do
+  let sourcesPath = mkExportPath "sources" opts.sourcesFormat
+  case opts.sourcesFormat of
+    FormatYaml -> liftIO $ Yaml.encodeFileWith yamlOptions sourcesPath sources
+    FormatJson -> liftIO $ exportJson sourcesPath sources
+    FormatMarkdown -> do
       let lang = Maybe.fromMaybe "" $ extractLanguage metadata
-      markdownText <- liftEither $ Nbparts.sourcesToMarkdown lang sources
+      markdownText <- liftEither $ sourcesToMarkdown lang sources
       liftIO $ Text.writeFile sourcesPath markdownText
   liftIO $ mapM_ (\(path, bytes) -> ByteString.writeFile (exportDirectory </> path) bytes) sourceMedia
 
-  let metadataPath = mkExportPath "metadata" metadataFormat
-  liftIO $ case metadataFormat of
-    Nbparts.FormatYaml -> Yaml.encodeFileWith yamlOptions metadataPath metadata
-    Nbparts.FormatJson -> exportJson metadataPath metadata
-    _ -> error $ "Illegal metadata format: " <> show metadataFormat
+  let metadataPath = mkExportPath "metadata" opts.metadataFormat
+  liftIO $ case opts.metadataFormat of
+    FormatYaml -> Yaml.encodeFileWith yamlOptions metadataPath metadata
+    FormatJson -> exportJson metadataPath metadata
+    _ -> error $ "Illegal metadata format: " <> show opts.metadataFormat
 
-  let outputsPath = mkExportPath "outputs" outputsFormat
-  liftIO $ case outputsFormat of
-    Nbparts.FormatYaml -> Yaml.encodeFileWith yamlOptions outputsPath outputs
-    Nbparts.FormatJson -> exportJson outputsPath outputs
-    _ -> error $ "Illegal outputs format: " <> show outputsFormat
+  let outputsPath = mkExportPath "outputs" opts.outputsFormat
+  liftIO $ case opts.outputsFormat of
+    FormatYaml -> Yaml.encodeFileWith yamlOptions outputsPath outputs
+    FormatJson -> exportJson outputsPath outputs
+    _ -> error $ "Illegal outputs format: " <> show opts.outputsFormat
   liftIO $ mapM_ (\(path, bytes) -> ByteString.writeFile (exportDirectory </> path) bytes) outputMedia
 
 hasOnlyOneNewline :: T.Text -> Bool
@@ -115,8 +123,8 @@ nbpartsYamlStringStyle s
   | Yaml.isSpecialString s = (Libyaml.NoTag, Libyaml.SingleQuoted)
   | otherwise = (Libyaml.NoTag, Libyaml.PlainNoTag)
 
-extractLanguage :: Nbparts.NotebookMetadata -> Maybe T.Text
-extractLanguage (Nbparts.NotebookMetadata _ _ (Ipynb.JSONMeta nbMeta) _) = do
+extractLanguage :: NotebookMetadata -> Maybe T.Text
+extractLanguage (NotebookMetadata _ _ (Ipynb.JSONMeta nbMeta) _) = do
   kernelspec <- Map.lookup "kernelspec" nbMeta
   langFromKernelSpec kernelspec
 

@@ -20,6 +20,7 @@ common extensions
         OverloadedStrings,
         LambdaCase,
         NoFieldSelectors,
+        OverloadedRecordDot,
         DuplicateRecordFields
 
 library
@@ -80,6 +81,8 @@ library
 executable nbparts
     import: warnings, extensions
     main-is: Main.hs
+    other-modules:
+        Nbparts.Cli.Options
     build-depends:
         nbparts,
         base ^>=4.19.2.0,

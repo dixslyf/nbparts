@@ -14,14 +14,18 @@ import Data.Maybe qualified as Maybe
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
-import Nbparts.Types qualified as Nbparts
+import Nbparts.Types
+  ( UnembeddedMimeAttachments (UnembeddedMimeAttachments),
+    UnembeddedMimeBundle (UnembeddedMimeBundle),
+    UnembeddedMimeData (BinaryData, JsonData, TextualData),
+  )
 import Network.Mime qualified as Mime
 import System.FilePath ((</>))
 
-unembedMimeAttachments :: (MonadState [(FilePath, ByteString)] m) => FilePath -> Ipynb.MimeAttachments -> m Nbparts.UnembeddedMimeAttachments
-unembedMimeAttachments subdir mimeAtts = Nbparts.UnembeddedMimeAttachments <$> Map.traverseWithKey go (coerce mimeAtts)
+unembedMimeAttachments :: (MonadState [(FilePath, ByteString)] m) => FilePath -> Ipynb.MimeAttachments -> m UnembeddedMimeAttachments
+unembedMimeAttachments subdir mimeAtts = UnembeddedMimeAttachments <$> Map.traverseWithKey go (coerce mimeAtts)
   where
-    go :: (MonadState [(FilePath, ByteString)] m) => Text -> Ipynb.MimeBundle -> m Nbparts.UnembeddedMimeBundle
+    go :: (MonadState [(FilePath, ByteString)] m) => Text -> Ipynb.MimeBundle -> m UnembeddedMimeBundle
     go attName = unembedMimeBundleWith (genFileName attName) subdir
 
     -- Include the attachment name in the bytes before hashing so that
@@ -36,16 +40,16 @@ unembedMimeBundleWith ::
   (Text -> ByteString -> FilePath) ->
   FilePath ->
   Ipynb.MimeBundle ->
-  m Nbparts.UnembeddedMimeBundle
-unembedMimeBundleWith genFileName subdir mimeBundle = Nbparts.UnembeddedMimeBundle <$> Map.traverseWithKey go (coerce mimeBundle)
+  m UnembeddedMimeBundle
+unembedMimeBundleWith genFileName subdir mimeBundle = UnembeddedMimeBundle <$> Map.traverseWithKey go (coerce mimeBundle)
   where
-    go :: (MonadState [(FilePath, ByteString)] m) => Ipynb.MimeType -> Ipynb.MimeData -> m Nbparts.UnembeddedMimeData
+    go :: (MonadState [(FilePath, ByteString)] m) => Ipynb.MimeType -> Ipynb.MimeData -> m UnembeddedMimeData
     go mimeType mimeData = do
       let (uMimeData, maybeExport) = unembedMimeDataWith genFileName subdir mimeType mimeData
       State.modify (Maybe.maybe id (:) maybeExport)
       pure uMimeData
 
-unembedMimeBundle :: (MonadState [(FilePath, ByteString)] m) => FilePath -> Ipynb.MimeBundle -> m Nbparts.UnembeddedMimeBundle
+unembedMimeBundle :: (MonadState [(FilePath, ByteString)] m) => FilePath -> Ipynb.MimeBundle -> m UnembeddedMimeBundle
 unembedMimeBundle = unembedMimeBundleWith binaryOutputFileName
 
 unembedMimeDataWith ::
@@ -53,19 +57,19 @@ unembedMimeDataWith ::
   FilePath ->
   Ipynb.MimeType ->
   Ipynb.MimeData ->
-  (Nbparts.UnembeddedMimeData, Maybe (FilePath, ByteString))
+  (UnembeddedMimeData, Maybe (FilePath, ByteString))
 unembedMimeDataWith genFileName subdir mimetype (Ipynb.BinaryData bytes) =
   let filename = genFileName mimetype bytes
       filepath = subdir </> filename
-   in (Nbparts.BinaryData filepath, Just (filepath, bytes))
-unembedMimeDataWith _ _ _ (Ipynb.TextualData text) = (Nbparts.TextualData text, Nothing)
-unembedMimeDataWith _ _ _ (Ipynb.JsonData value) = (Nbparts.JsonData value, Nothing)
+   in (BinaryData filepath, Just (filepath, bytes))
+unembedMimeDataWith _ _ _ (Ipynb.TextualData text) = (TextualData text, Nothing)
+unembedMimeDataWith _ _ _ (Ipynb.JsonData value) = (JsonData value, Nothing)
 
 unembedMimeData ::
   FilePath ->
   Ipynb.MimeType ->
   Ipynb.MimeData ->
-  (Nbparts.UnembeddedMimeData, Maybe (FilePath, ByteString))
+  (UnembeddedMimeData, Maybe (FilePath, ByteString))
 unembedMimeData = unembedMimeDataWith binaryOutputFileName
 
 binaryOutputFileName :: Text -> ByteString -> FilePath

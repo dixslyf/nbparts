@@ -6,10 +6,23 @@ import Control.Monad.Except (runExceptT)
 import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Either qualified as Either
 import Data.Text (Text)
-import Nbparts.Pack (PackOptions (PackOptions))
-import Nbparts.Pack qualified as Nbparts
-import Nbparts.Unpack (UnpackOptions (UnpackOptions))
-import Nbparts.Unpack qualified as Nbparts
+import Nbparts.Pack
+  ( PackOptions
+      ( PackOptions,
+        outputPath,
+        partsDirectory
+      ),
+  )
+import Nbparts.Unpack
+  ( UnpackOptions
+      ( UnpackOptions,
+        metadataFormat,
+        notebookPath,
+        outputPath,
+        outputsFormat,
+        sourcesFormat
+      ),
+  )
 import Network.HTTP.Req
   ( GET (GET),
     NoReqBody (NoReqBody),
@@ -60,7 +73,7 @@ testIdentityWith' (UnpackFormats {sourcesFormat, metadataFormat, outputsFormat})
     runExceptT $
       runUnpack $
         UnpackOptions
-          { notebook = nbPath,
+          { notebookPath = nbPath,
             sourcesFormat,
             metadataFormat,
             outputsFormat,
@@ -72,7 +85,7 @@ testIdentityWith' (UnpackFormats {sourcesFormat, metadataFormat, outputsFormat})
     runExceptT $
       runPack $
         PackOptions
-          { directory = unpackPath,
+          { partsDirectory = unpackPath,
             outputPath = Just repackPath
           }
   packResult `shouldSatisfy` Either.isRight

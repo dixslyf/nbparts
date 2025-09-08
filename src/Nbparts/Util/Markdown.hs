@@ -11,11 +11,18 @@ import Data.Sequence (Seq ((:|>)))
 import Data.Sequence qualified as Sequence
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Nbparts.Types.Sources.Markdown qualified as NbpartsMd
-import Nbparts.Util.Text qualified as Util.Text
+import Nbparts.Types.Sources.Markdown
+  ( Block (Block),
+    BlockType (RawBlock, ReferenceLinkDefinition),
+    Blocks,
+    Inline (Inline),
+    InlineType (Image, RawInline),
+    Inlines (Inlines),
+  )
+import Nbparts.Util.Text qualified as TextUtil
 
 -- TODO: Revisit syntax spec
-parseMarkdown :: Text -> Either Commonmark.ParseError NbpartsMd.Blocks
+parseMarkdown :: Text -> Either Commonmark.ParseError Blocks
 parseMarkdown mdText =
   runIdentity $
     mdText
@@ -39,7 +46,7 @@ sourcePosToIndices :: [Text] -> Commonmark.SourcePos -> Maybe Int
 sourcePosToIndices mdLines srcPos = do
   let line = Commonmark.sourceLine srcPos
       column = Commonmark.sourceColumn srcPos
-  Util.Text.lineColToIndex mdLines line column
+  TextUtil.lineColToIndex mdLines line column
 
 blockSourceRangeToIndices :: [Text] -> Commonmark.SourceRange -> Maybe (Int, Int)
 blockSourceRangeToIndices mdLines (Commonmark.SourceRange srcRange) = do
@@ -68,9 +75,9 @@ blockEndSourcePosToIndices mdLines srcPos = do
             (lineCount, Text.length (last mdLines) + 1)
           else
             (rawLine, rawColumn)
-  Util.Text.lineColToIndex mdLines line column
+  TextUtil.lineColToIndex mdLines line column
 
-commentChangesWith :: (Text -> Text) -> [Text] -> NbpartsMd.Blocks -> [((Int, Int), Text)]
+commentChangesWith :: (Text -> Text) -> [Text] -> Blocks -> [((Int, Int), Text)]
 commentChangesWith transformComment mdLines = go
   where
     mdText = Text.intercalate "\n" mdLines
@@ -92,9 +99,9 @@ commentChangesWith transformComment mdLines = go
 
     htmlSourceRangeAndText :: (Data a) => a -> Maybe (Commonmark.SourceRange, Text)
     htmlSourceRangeAndText node
-      | Just (NbpartsMd.Block (NbpartsMd.RawBlock (Commonmark.Format "html") html) srcRange _attrs) <- Data.cast node =
+      | Just (Block (RawBlock (Commonmark.Format "html") html) srcRange _attrs) <- Data.cast node =
           Just (srcRange, html)
-      | Just (NbpartsMd.Inline (NbpartsMd.RawInline (Commonmark.Format "html") html) srcRange _attrs) <- Data.cast node =
+      | Just (Inline (RawInline (Commonmark.Format "html") html) srcRange _attrs) <- Data.cast node =
           Just (srcRange, html)
       | otherwise = Nothing
 
@@ -103,23 +110,23 @@ commentChangesWith transformComment mdLines = go
 -- since the AST doesn't have enough information about the formatting), we collect the positions of
 -- the image links and what to replace them with before performing the replacement using plain text
 -- manipulation. That way, we leave everything else untouched.
-attachmentChangesWith :: (Text -> Maybe Text) -> [Text] -> NbpartsMd.Blocks -> [((Int, Int), Text)]
+attachmentChangesWith :: (Text -> Maybe Text) -> [Text] -> Blocks -> [((Int, Int), Text)]
 attachmentChangesWith transformTarget mdLines = go
   where
     mdText = Text.intercalate "\n" mdLines
     go :: (Data b) => b -> [((Int, Int), Text)]
     go node
-      | Just (NbpartsMd.Inline (NbpartsMd.Image target _title (NbpartsMd.Inlines ils)) srcRange _attrs) <- Data.cast node =
+      | Just (Inline (Image target _title (Inlines ils)) srcRange _attrs) <- Data.cast node =
           let unSrcRange = NonEmptyList.fromList $ Commonmark.unSourceRange srcRange
               -- Find the end index of the image's inlines, or if there are no inlines,
               -- then just use the image's start index. This index is used as the starting
               -- point from which to search for the target text.
               -- Safety: This should never fail since the indices are valid.
               searchStart = Maybe.fromJust $ sourcePosToIndices mdLines $ case ils of
-                _ :|> (NbpartsMd.Inline _ (Commonmark.SourceRange sr) _) -> snd $ last sr
+                _ :|> (Inline _ (Commonmark.SourceRange sr) _) -> snd $ last sr
                 Sequence.Empty -> fst $ NonEmptyList.head unSrcRange
            in Maybe.maybeToList $ tryMkChange srcRange target searchStart
-      | Just (NbpartsMd.Block (NbpartsMd.ReferenceLinkDefinition label (target, _title)) srcRange _attrs) <- Data.cast node =
+      | Just (Block (ReferenceLinkDefinition label (target, _title)) srcRange _attrs) <- Data.cast node =
           let unSrcRange = NonEmptyList.fromList $ Commonmark.unSourceRange srcRange
               -- Safety: This should never fail since the indices are valid.
               -- We're simply adding the length of the label to the start index of the reference link definition.
@@ -144,5 +151,5 @@ attachmentChangesWith transformTarget mdLines = go
           -- Safety: This should never fail since the indices are valid.
           searchEnd = Maybe.fromJust . sourcePosToIndices mdLines . snd . NonEmptyList.last $ unSrcRange
 
-      indices <- Util.Text.findSliceBetween searchStart searchEnd mdText target
+      indices <- TextUtil.findSliceBetween searchStart searchEnd mdText target
       Just (indices, transformedTarget)

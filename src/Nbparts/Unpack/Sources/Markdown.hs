@@ -9,28 +9,36 @@ import Data.Maybe qualified as Maybe
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
-import Nbparts.Types qualified as Nbparts
-import Nbparts.Util.Map qualified
-import Nbparts.Util.Markdown qualified as Util.Markdown
-import Nbparts.Util.Text qualified
+import Nbparts.Types
+  ( CellMarker (CellMarker),
+    CellSource (CellSource),
+    CellType (Code, Markdown, Raw),
+    UnembeddedMimeAttachments (UnembeddedMimeAttachments),
+    UnembeddedMimeBundle (UnembeddedMimeBundle),
+    UnembeddedMimeData (BinaryData),
+    UnpackError (UnpackParseMarkdownError),
+  )
+import Nbparts.Util.Map qualified as MapUtil
+import Nbparts.Util.Markdown qualified as MarkdownUtil
+import Nbparts.Util.Text qualified as TextUtil
 
-sourcesToMarkdown :: Text -> [Nbparts.CellSource] -> Either Nbparts.UnpackError Text
+sourcesToMarkdown :: Text -> [CellSource] -> Either UnpackError Text
 sourcesToMarkdown lang sources = do
   texts <- traverse (sourceToMarkdown lang) sources
   pure $ Text.concat (map (<> "\n\n") texts)
 
-sourceToMarkdown :: Text -> Nbparts.CellSource -> Either Nbparts.UnpackError Text
-sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Markdown source maybeAttachments) = do
+sourceToMarkdown :: Text -> CellSource -> Either UnpackError Text
+sourceToMarkdown _ (CellSource cellId cellType@Markdown source maybeAttachments) = do
   -- NOTE: Remember that the elements in `source` have trailing newlines.
   let mdText = Text.concat source
   let mdLines = Text.lines mdText
 
-  mdAst <- Util.Markdown.parseMarkdown mdText & Arrow.left Nbparts.UnpackParseMarkdownError
+  mdAst <- MarkdownUtil.parseMarkdown mdText & Arrow.left UnpackParseMarkdownError
 
-  let escapesReplacements = Util.Markdown.commentChangesWith escapeComments mdLines mdAst
+  let escapesReplacements = MarkdownUtil.commentChangesWith escapeComments mdLines mdAst
   let attachmentReplacements = case maybeAttachments of
         Just attachments ->
-          Util.Markdown.attachmentChangesWith
+          MarkdownUtil.attachmentChangesWith
             (fmap Text.pack . lookupAttachmentFilePath attachments)
             mdLines
             mdAst
@@ -38,29 +46,29 @@ sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Markdown source m
   let textReplacements = escapesReplacements <> attachmentReplacements
 
   -- Safety: The replacements do not overlap.
-  let fixedMdText = Maybe.fromJust $ Nbparts.Util.Text.replaceSlices mdText textReplacements
+  let fixedMdText = Maybe.fromJust $ TextUtil.replaceSlices mdText textReplacements
 
-  pure $ mkCellMarkerComment (Nbparts.CellMarker cellId cellType maybeAttachments) <> "\n" <> fixedMdText
-sourceToMarkdown _ (Nbparts.CellSource cellId cellType@Nbparts.Raw source _) =
+  pure $ mkCellMarkerComment (CellMarker cellId cellType maybeAttachments) <> "\n" <> fixedMdText
+sourceToMarkdown _ (CellSource cellId cellType@Raw source _) =
   pure $
     Text.intercalate
       "\n"
-      [ mkCellMarkerComment (Nbparts.CellMarker cellId cellType Nothing),
+      [ mkCellMarkerComment (CellMarker cellId cellType Nothing),
         "```",
         Text.concat source,
         "```"
       ]
-sourceToMarkdown lang (Nbparts.CellSource cellId cellType@Nbparts.Code source _) =
+sourceToMarkdown lang (CellSource cellId cellType@Code source _) =
   pure $
     Text.intercalate
       "\n"
-      [ mkCellMarkerComment (Nbparts.CellMarker cellId cellType Nothing),
+      [ mkCellMarkerComment (CellMarker cellId cellType Nothing),
         "```" <> lang,
         Text.concat source,
         "```"
       ]
 
-mkCellMarkerComment :: Nbparts.CellMarker -> Text
+mkCellMarkerComment :: CellMarker -> Text
 mkCellMarkerComment cm =
   Text.intercalate
     " "
@@ -76,16 +84,16 @@ escapeCellMarkerContent = Text.replace "-->" "-\\->" . Text.replace "\\" "\\\\"
 escapeComments :: Text -> Text
 escapeComments = Text.replace "nbparts:cell" "\\nbparts:cell" . Text.replace "\\" "\\\\"
 
-lookupAttachmentFilePath :: Nbparts.UnembeddedMimeAttachments -> Text -> Maybe FilePath
-lookupAttachmentFilePath (Nbparts.UnembeddedMimeAttachments attachments) target = do
+lookupAttachmentFilePath :: UnembeddedMimeAttachments -> Text -> Maybe FilePath
+lookupAttachmentFilePath (UnembeddedMimeAttachments attachments) target = do
   attachmentName <- Text.stripPrefix "attachment:" target
 
   -- TODO: Should warn if the attachment can't be found.
-  (Nbparts.UnembeddedMimeBundle mimeBundle) <- Map.lookup attachmentName attachments
+  (UnembeddedMimeBundle mimeBundle) <- Map.lookup attachmentName attachments
 
   -- The mime bundle should only have 1 entry, but just in case it doesn't,
   -- we find the first entry whose mime type starts with "image".
-  mimedata <- Nbparts.Util.Map.lookupByKeyPrefix "image" mimeBundle
+  mimedata <- MapUtil.lookupByKeyPrefix "image" mimeBundle
   case mimedata of
-    Nbparts.BinaryData fp -> Just fp
+    BinaryData fp -> Just fp
     _ -> Nothing

@@ -9,24 +9,28 @@ import Data.List qualified as List
 import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
 import Data.Text (Text)
-import Nbparts.Types qualified as Nbparts
-import Nbparts.Unpack.Mime qualified as Nbparts
+import Nbparts.Types
+  ( UnembeddedCellOutput (DisplayData, Err, ExecuteResult, Stream),
+    UnembeddedNotebookOutputs (UnembeddedNotebookOutputs),
+    UnpackError (UnpackMissingCellIdError),
+  )
+import Nbparts.Unpack.Mime (unembedMimeBundle)
 
 collectOutputs ::
   FilePath ->
   Ipynb.Notebook a ->
-  Either Nbparts.UnpackError (Nbparts.UnembeddedNotebookOutputs, [(FilePath, ByteString)])
+  Either UnpackError (UnembeddedNotebookOutputs, [(FilePath, ByteString)])
 collectOutputs subdir (Ipynb.Notebook _meta _format cells) = State.runStateT nbOutputsState []
   where
     nbOutputsState ::
       ( MonadState [(FilePath, ByteString)] m,
-        MonadError Nbparts.UnpackError m
+        MonadError UnpackError m
       ) =>
-      m Nbparts.UnembeddedNotebookOutputs
+      m UnembeddedNotebookOutputs
     nbOutputsState = do
       let codeOutputs = Maybe.mapMaybe extractCodeOutputs cells
       entries <- traverse (uncurry (unembedCodeOutputs subdir)) codeOutputs
-      pure (Nbparts.UnembeddedNotebookOutputs $ Map.fromList entries)
+      pure (UnembeddedNotebookOutputs $ Map.fromList entries)
 
     extractCodeOutputs :: Ipynb.Cell a -> Maybe (Maybe Text, [Ipynb.Output a])
     extractCodeOutputs (Ipynb.Cell (Ipynb.Code _ outputs) maybeCellId _ _ _)
@@ -35,20 +39,20 @@ collectOutputs subdir (Ipynb.Notebook _meta _format cells) = State.runStateT nbO
     extractCodeOutputs _ = Nothing
 
 unembedCodeOutputs ::
-  (MonadState [(FilePath, ByteString)] m, MonadError Nbparts.UnpackError m) =>
+  (MonadState [(FilePath, ByteString)] m, MonadError UnpackError m) =>
   FilePath ->
   Maybe Text ->
   [Ipynb.Output a] ->
-  m (Text, [Nbparts.UnembeddedCellOutput])
+  m (Text, [UnembeddedCellOutput])
 unembedCodeOutputs subdir (Just cellId) outputs = (cellId,) <$> traverse (unembedOutput subdir) outputs
-unembedCodeOutputs _ Nothing _ = throwError Nbparts.UnpackMissingCellIdError
+unembedCodeOutputs _ Nothing _ = throwError UnpackMissingCellIdError
 
-unembedOutput :: (MonadState [(FilePath, ByteString)] m) => FilePath -> Ipynb.Output a -> m Nbparts.UnembeddedCellOutput
-unembedOutput _ (Ipynb.Stream streamName (Ipynb.Source streamText)) = pure $ Nbparts.Stream streamName streamText
+unembedOutput :: (MonadState [(FilePath, ByteString)] m) => FilePath -> Ipynb.Output a -> m UnembeddedCellOutput
+unembedOutput _ (Ipynb.Stream streamName (Ipynb.Source streamText)) = pure $ Stream streamName streamText
 unembedOutput subdir (Ipynb.DisplayData displayData metadata) = do
-  uDisplayData <- Nbparts.unembedMimeBundle subdir displayData
-  pure $ Nbparts.DisplayData uDisplayData metadata
+  uDisplayData <- unembedMimeBundle subdir displayData
+  pure $ DisplayData uDisplayData metadata
 unembedOutput subdir (Ipynb.ExecuteResult executeCount executeData metadata) = do
-  uExData <- Nbparts.unembedMimeBundle subdir executeData
-  pure $ Nbparts.ExecuteResult executeCount uExData metadata
-unembedOutput _ (Ipynb.Err errName errValue errTraceback) = pure $ Nbparts.Err errName errValue errTraceback
+  uExData <- unembedMimeBundle subdir executeData
+  pure $ ExecuteResult executeCount uExData metadata
+unembedOutput _ (Ipynb.Err errName errValue errTraceback) = pure $ Err errName errValue errTraceback

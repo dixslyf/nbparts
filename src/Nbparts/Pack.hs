@@ -18,32 +18,57 @@ import Data.Text.IO qualified as Text
 import Data.Version (Version (Version))
 import Data.Version qualified as Version
 import Data.Yaml qualified as Yaml
-import Nbparts.Pack.Metadata qualified as Nbparts
-import Nbparts.Pack.Outputs qualified as Nbparts
-import Nbparts.Pack.Sources qualified as Nbparts
-import Nbparts.Pack.Sources.Markdown qualified as Nbparts
-import Nbparts.Types (currentNbpartsVersion)
-import Nbparts.Types qualified as Nbparts
+import Nbparts.Pack.Metadata (fillMetadata)
+import Nbparts.Pack.Outputs (fillOutputs)
+import Nbparts.Pack.Sources (fillSources)
+import Nbparts.Pack.Sources.Markdown (markdownToSources)
+import Nbparts.Types
+  ( CellSource,
+    Format (FormatJson, FormatMarkdown, FormatYaml),
+    IllegalFormatContext (IllegalFormatMetadata, IllegalFormatOutputs),
+    Manifest (Manifest, metadataFormat, nbpartsVersion, outputsFormat, sourcesFormat),
+    NotebookMetadata (NotebookMetadata),
+    PackError
+      ( PackIllegalFormatError,
+        PackManifestTooNewError,
+        PackManifestTooOldError,
+        PackManifestUnknownVersionError,
+        PackParseJsonMetadataError,
+        PackParseJsonOutputsError,
+        PackParseJsonSourcesError,
+        PackParseManifestError,
+        PackParseYamlMetadataError,
+        PackParseYamlOutputsError,
+        PackParseYamlSourcesError,
+        PackUnsupportedNotebookFormat
+      ),
+    ParseYamlError (ParseYamlError),
+    SomeNotebook (SomeNotebook),
+    UnembeddedNotebookOutputs,
+    currentNbpartsVersion,
+    formatExtension,
+    withSomeNotebook,
+  )
 import System.FilePath ((<.>), (</>))
 import System.FilePath qualified as FilePath
 
 data PackOptions = PackOptions
-  { directory :: FilePath,
+  { partsDirectory :: FilePath,
     outputPath :: Maybe FilePath
   }
 
-pack :: (MonadError Nbparts.PackError m, MonadIO m) => PackOptions -> m ()
-pack (PackOptions nbpartsDir maybeOutputPath) = do
+pack :: (MonadError PackError m, MonadIO m) => PackOptions -> m ()
+pack opts = do
   -- `nbpartsDir` should be in the form "some_notebook.ipynb.nbparts".
-  let fallbackOutputPath = FilePath.dropExtension nbpartsDir
-  let outputPath = Maybe.fromMaybe fallbackOutputPath maybeOutputPath
+  let fallbackOutputPath = FilePath.dropExtension opts.partsDirectory
+  let outputPath = Maybe.fromMaybe fallbackOutputPath opts.outputPath
 
   -- Read manifest, metadata, sources and outputs.
-  let mkImportPath :: FilePath -> Nbparts.Format -> FilePath
-      mkImportPath fname fmt = nbpartsDir </> fname <.> Nbparts.formatExtension fmt
+  let mkImportPath :: FilePath -> Format -> FilePath
+      mkImportPath fname fmt = opts.partsDirectory </> fname <.> formatExtension fmt
 
-  let manifestPath = mkImportPath "nbparts" Nbparts.FormatYaml
-  ( Nbparts.Manifest
+  let manifestPath = mkImportPath "nbparts" FormatYaml
+  ( Manifest
       { nbpartsVersion,
         sourcesFormat,
         metadataFormat,
@@ -53,7 +78,7 @@ pack (PackOptions nbpartsDir maybeOutputPath) = do
     liftEither
       =<< liftIO
         ( left
-            (Nbparts.PackParseManifestError . Nbparts.ParseYamlError)
+            (PackParseManifestError . ParseYamlError)
             <$> Yaml.decodeFileEither manifestPath
         )
 
@@ -61,55 +86,55 @@ pack (PackOptions nbpartsDir maybeOutputPath) = do
 
   -- TODO: Don't fail if metadata and outputs are missing — just warn.
   let sourcesPath = mkImportPath "sources" sourcesFormat
-  (sources :: [Nbparts.CellSource]) <- case sourcesFormat of
-    Nbparts.FormatYaml -> do
+  (sources :: [CellSource]) <- case sourcesFormat of
+    FormatYaml -> do
       res <- liftIO $ Yaml.decodeFileEither sourcesPath
-      liftEither $ left (Nbparts.PackParseYamlSourcesError . Nbparts.ParseYamlError) res
-    Nbparts.FormatJson -> do
+      liftEither $ left (PackParseYamlSourcesError . ParseYamlError) res
+    FormatJson -> do
       res <- liftIO $ Aeson.eitherDecodeFileStrict sourcesPath
-      liftEither $ left (Nbparts.PackParseJsonSourcesError . Text.pack) res
-    Nbparts.FormatMarkdown -> do
+      liftEither $ left (PackParseJsonSourcesError . Text.pack) res
+    FormatMarkdown -> do
       mdText <- liftIO $ Text.readFile sourcesPath
-      liftEither $ Nbparts.markdownToSources sourcesPath mdText
+      liftEither $ markdownToSources sourcesPath mdText
 
   let metadataPath = mkImportPath "metadata" metadataFormat
-  (metadata :: Nbparts.NotebookMetadata) <- case metadataFormat of
-    Nbparts.FormatYaml -> do
+  (metadata :: NotebookMetadata) <- case metadataFormat of
+    FormatYaml -> do
       res <- liftIO $ Yaml.decodeFileEither metadataPath
-      liftEither $ left (Nbparts.PackParseYamlMetadataError . Nbparts.ParseYamlError) res
-    Nbparts.FormatJson -> do
+      liftEither $ left (PackParseYamlMetadataError . ParseYamlError) res
+    FormatJson -> do
       res <- liftIO $ Aeson.eitherDecodeFileStrict metadataPath
-      liftEither $ left (Nbparts.PackParseJsonMetadataError . Text.pack) res
-    _ -> throwError $ Nbparts.PackIllegalFormatError Nbparts.IllegalFormatMetadata metadataFormat
+      liftEither $ left (PackParseJsonMetadataError . Text.pack) res
+    _ -> throwError $ PackIllegalFormatError IllegalFormatMetadata metadataFormat
 
   let outputsPath = mkImportPath "outputs" outputsFormat
-  (unembeddedOutputs :: Nbparts.UnembeddedNotebookOutputs) <- case outputsFormat of
-    Nbparts.FormatYaml -> do
+  (unembeddedOutputs :: UnembeddedNotebookOutputs) <- case outputsFormat of
+    FormatYaml -> do
       res <- liftIO $ Yaml.decodeFileEither outputsPath
-      liftEither $ left (Nbparts.PackParseYamlOutputsError . Nbparts.ParseYamlError) res
-    Nbparts.FormatJson -> do
+      liftEither $ left (PackParseYamlOutputsError . ParseYamlError) res
+    FormatJson -> do
       res <- liftIO $ Aeson.eitherDecodeFileStrict outputsPath
-      liftEither $ left (Nbparts.PackParseJsonOutputsError . Text.pack) res
-    _ -> throwError $ Nbparts.PackIllegalFormatError Nbparts.IllegalFormatOutputs outputsFormat
+      liftEither $ left (PackParseJsonOutputsError . Text.pack) res
+    _ -> throwError $ PackIllegalFormatError IllegalFormatOutputs outputsFormat
 
-  let (Nbparts.NotebookMetadata major minor _ _) = metadata
+  let (NotebookMetadata major minor _ _) = metadata
   nb <- case major of
-    4 -> pure $ Nbparts.SomeNotebook $ (emptyNotebook @Ipynb.NbV4) (major, minor)
-    _ -> throwError $ Nbparts.PackUnsupportedNotebookFormat (major, minor)
+    4 -> pure $ SomeNotebook $ (emptyNotebook @Ipynb.NbV4) (major, minor)
+    _ -> throwError $ PackUnsupportedNotebookFormat (major, minor)
 
   -- Create and export the notebook.
   filledNb <-
-    Nbparts.withSomeNotebook
+    withSomeNotebook
       nb
-      ( liftIO . Nbparts.fillSources nbpartsDir sources
-          >=> liftEither . Nbparts.fillMetadata metadata
-          >=> Nbparts.fillOutputs nbpartsDir unembeddedOutputs
-          >=> pure . Nbparts.SomeNotebook
+      ( liftIO . fillSources opts.partsDirectory sources
+          >=> liftEither . fillMetadata metadata
+          >=> fillOutputs opts.partsDirectory unembeddedOutputs
+          >=> pure . SomeNotebook
       )
 
   liftIO $ exportJson outputPath filledNb
 
-checkVersion :: (MonadError Nbparts.PackError m, MonadIO m) => Version -> m ()
+checkVersion :: (MonadError PackError m, MonadIO m) => Version -> m ()
 checkVersion nbpartsVersion = do
   let Version branch _ = nbpartsVersion
       maybeMajorA = branch !? 0
@@ -119,7 +144,7 @@ checkVersion nbpartsVersion = do
 
   (majorA, majorB, minor, patch) <- case (,,,) <$> maybeMajorA <*> maybeMajorB <*> maybeMinor <*> maybePatch of
     Just branches -> pure branches
-    Nothing -> throwError $ Nbparts.PackManifestUnknownVersionError nbpartsVersion
+    Nothing -> throwError $ PackManifestUnknownVersionError nbpartsVersion
 
   compareVersion majorA majorB minor patch
   where
@@ -132,10 +157,10 @@ checkVersion nbpartsVersion = do
     cMinor = cBranch NonEmptyList.!! 2
     cPatch = cBranch NonEmptyList.!! 3
 
-    compareVersion :: (MonadError Nbparts.PackError m, MonadIO m) => Int -> Int -> Int -> Int -> m ()
+    compareVersion :: (MonadError PackError m, MonadIO m) => Int -> Int -> Int -> Int -> m ()
     compareVersion majorA majorB minor patch
-      | (cMajorA, cMajorB) > (majorA, majorB) = throwError $ Nbparts.PackManifestTooOldError nbpartsVersion
-      | (cMajorA, cMajorB) < (majorA, majorB) = throwError $ Nbparts.PackManifestTooNewError nbpartsVersion
+      | (cMajorA, cMajorB) > (majorA, majorB) = throwError $ PackManifestTooOldError nbpartsVersion
+      | (cMajorA, cMajorB) < (majorA, majorB) = throwError $ PackManifestTooNewError nbpartsVersion
       | cMinor < minor = liftIO $ warnManifestNewer "minor"
       | cPatch < patch = liftIO $ warnManifestNewer "patch"
       -- Newer minor or patch version should be backwards compatible.

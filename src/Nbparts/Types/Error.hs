@@ -16,7 +16,7 @@ import Text.Parsec (errorPos)
 recommendedNotebookFormat :: (Int, Int)
 recommendedNotebookFormat = (4, 5)
 
-data Error = UnpackError UnpackError | PackError PackError
+data NbpartsError = UnpackError UnpackError | PackError PackError
   deriving (Show, Eq)
 
 data UnpackError
@@ -76,7 +76,7 @@ instance Megaparsec.ShowErrorComponent ParseMarkdownSourcesError where
   showErrorComponent (ParseMarkdownSourcesMarkdownError mdErr) =
     "Failed to parse markdown: " <> show mdErr
 
-renderError :: Error -> Text
+renderError :: NbpartsError -> Text
 renderError err = case err of
   UnpackError (UnpackParseNotebookError message) -> "Failed to parse notebook: " <> message
   UnpackError (UnpackParseMarkdownError mdErr) -> "Failed to parse markdown: " <> Text.pack (show mdErr)

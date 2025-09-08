@@ -6,21 +6,24 @@ import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy qualified as ByteString.Lazy
 import Data.Ipynb qualified as Ipynb
 import Data.Text qualified as Text
-import Nbparts.Pack qualified as Nbparts
+import Nbparts.Pack (PackOptions)
 import Nbparts.Run (Command (Pack, Unpack), Options (Options))
 import Nbparts.Run qualified as Nbparts
-import Nbparts.Types qualified as Nbparts
-import Nbparts.Types.Error (renderFormat)
-import Nbparts.Unpack qualified as Nbparts
+import Nbparts.Types
+  ( Format (FormatJson, FormatMarkdown, FormatYaml),
+    NbpartsError,
+    renderFormat,
+  )
+import Nbparts.Unpack (UnpackOptions)
 import Test.Hspec (SpecWith, context)
 
 fixtureDir :: FilePath
 fixtureDir = "tests/fixtures"
 
-runUnpack :: (MonadError Nbparts.Error m, MonadIO m) => Nbparts.UnpackOptions -> m ()
+runUnpack :: (MonadError NbpartsError m, MonadIO m) => UnpackOptions -> m ()
 runUnpack = Nbparts.run . Options . Unpack
 
-runPack :: (MonadError Nbparts.Error m, MonadIO m) => Nbparts.PackOptions -> m ()
+runPack :: (MonadError NbpartsError m, MonadIO m) => PackOptions -> m ()
 runPack = Nbparts.run . Options . Pack
 
 readIpynb :: (MonadError String m, MonadIO m) => FilePath -> m (Ipynb.Notebook Ipynb.NbV4)
@@ -29,9 +32,9 @@ readIpynb fp = do
   liftEither $ Aeson.eitherDecode bytes
 
 data UnpackFormats = UnpackFormats
-  { sourcesFormat :: Nbparts.Format,
-    metadataFormat :: Nbparts.Format,
-    outputsFormat :: Nbparts.Format
+  { sourcesFormat :: Format,
+    metadataFormat :: Format,
+    outputsFormat :: Format
   }
 
 runSpecWithUnpackFormatsCA :: (UnpackFormats -> SpecWith a) -> SpecWith a
@@ -53,33 +56,33 @@ runSpecWithUnpackFormats spec fmts@(UnpackFormats {sourcesFormat, metadataFormat
 unpackFormatsCA :: [UnpackFormats]
 unpackFormatsCA =
   [ UnpackFormats
-      { sourcesFormat = Nbparts.FormatYaml,
-        metadataFormat = Nbparts.FormatYaml,
-        outputsFormat = Nbparts.FormatYaml
+      { sourcesFormat = FormatYaml,
+        metadataFormat = FormatYaml,
+        outputsFormat = FormatYaml
       },
     UnpackFormats
-      { sourcesFormat = Nbparts.FormatYaml,
-        metadataFormat = Nbparts.FormatJson,
-        outputsFormat = Nbparts.FormatJson
+      { sourcesFormat = FormatYaml,
+        metadataFormat = FormatJson,
+        outputsFormat = FormatJson
       },
     UnpackFormats
-      { sourcesFormat = Nbparts.FormatJson,
-        metadataFormat = Nbparts.FormatYaml,
-        outputsFormat = Nbparts.FormatJson
+      { sourcesFormat = FormatJson,
+        metadataFormat = FormatYaml,
+        outputsFormat = FormatJson
       },
     UnpackFormats
-      { sourcesFormat = Nbparts.FormatJson,
-        metadataFormat = Nbparts.FormatJson,
-        outputsFormat = Nbparts.FormatYaml
+      { sourcesFormat = FormatJson,
+        metadataFormat = FormatJson,
+        outputsFormat = FormatYaml
       },
     UnpackFormats
-      { sourcesFormat = Nbparts.FormatMarkdown,
-        metadataFormat = Nbparts.FormatYaml,
-        outputsFormat = Nbparts.FormatJson
+      { sourcesFormat = FormatMarkdown,
+        metadataFormat = FormatYaml,
+        outputsFormat = FormatJson
       },
     UnpackFormats
-      { sourcesFormat = Nbparts.FormatMarkdown,
-        metadataFormat = Nbparts.FormatJson,
-        outputsFormat = Nbparts.FormatYaml
+      { sourcesFormat = FormatMarkdown,
+        metadataFormat = FormatJson,
+        outputsFormat = FormatYaml
       }
   ]

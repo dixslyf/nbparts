@@ -9,44 +9,52 @@ import Data.Maybe qualified as Maybe
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
-import Nbparts.Types qualified as Nbparts
-import Nbparts.Util.Markdown qualified
-import Nbparts.Util.Markdown qualified as Util.Markdown
-import Nbparts.Util.Text qualified
+import Nbparts.Types
+  ( CellMarker (CellMarker),
+    CellSource (CellSource),
+    CellType (Code, Markdown, Raw),
+    PackError (PackParseMarkdownSourcesError),
+    ParseMarkdownSourcesError (ParseMarkdownSourcesJsonError, ParseMarkdownSourcesMarkdownError),
+    UnembeddedMimeAttachments (UnembeddedMimeAttachments),
+    UnembeddedMimeBundle (UnembeddedMimeBundle),
+    UnembeddedMimeData (BinaryData),
+  )
+import Nbparts.Util.Markdown qualified as MarkdownUtil
+import Nbparts.Util.Text qualified as TextUtil
 import Text.Megaparsec (Parsec)
 import Text.Megaparsec qualified as P
 import Text.Megaparsec.Char qualified as P
 
-type Parser = Parsec Nbparts.ParseMarkdownSourcesError Text
+type Parser = Parsec ParseMarkdownSourcesError Text
 
-markdownToSources :: String -> Text -> Either Nbparts.PackError [Nbparts.CellSource]
-markdownToSources filename mdText = left Nbparts.PackParseMarkdownSourcesError $ P.runParser parseSources filename mdText
+markdownToSources :: String -> Text -> Either PackError [CellSource]
+markdownToSources filename mdText = left PackParseMarkdownSourcesError $ P.runParser parseSources filename mdText
 
-parseSources :: Parser [Nbparts.CellSource]
+parseSources :: Parser [CellSource]
 parseSources = P.many parseSource
 
-parseSource :: Parser Nbparts.CellSource
+parseSource :: Parser CellSource
 parseSource = do
-  (Nbparts.CellMarker cellId cellType maybeAttachments) <- parseCellInfo
+  (CellMarker cellId cellType maybeAttachments) <- parseCellInfo
 
   -- Try removing the newline added after the <!-- nbparts:cell ... --> comment.
   Monad.void $ P.optional P.newline
 
   srcText <- case cellType of
-    Nbparts.Code -> parseCodeOrRawCell
-    Nbparts.Raw -> parseCodeOrRawCell
-    Nbparts.Markdown -> do
+    Code -> parseCodeOrRawCell
+    Raw -> parseCodeOrRawCell
+    Markdown -> do
       mdText <- parseOtherCell
 
-      mdAst <- case Nbparts.Util.Markdown.parseMarkdown mdText of
+      mdAst <- case MarkdownUtil.parseMarkdown mdText of
         Right ast -> pure ast
-        Left mdErr -> P.customFailure (Nbparts.ParseMarkdownSourcesMarkdownError mdErr)
+        Left mdErr -> P.customFailure (ParseMarkdownSourcesMarkdownError mdErr)
       let mdLines = Text.lines mdText
 
-      let escapesReplacements = Util.Markdown.commentChangesWith unescapeComments mdLines mdAst
+      let escapesReplacements = MarkdownUtil.commentChangesWith unescapeComments mdLines mdAst
       let attachmentReplacements = case maybeAttachments of
             Just attachments ->
-              Util.Markdown.attachmentChangesWith
+              MarkdownUtil.attachmentChangesWith
                 (fmap (mappend "attachment:") . findAttachmentNameByFilePath attachments . Text.unpack)
                 mdLines
                 mdAst
@@ -54,11 +62,11 @@ parseSource = do
       let textReplacements = escapesReplacements <> attachmentReplacements
 
       -- Safety: The replacements do not overlap.
-      pure . Maybe.fromJust $ Nbparts.Util.Text.replaceSlices mdText textReplacements
+      pure . Maybe.fromJust $ TextUtil.replaceSlices mdText textReplacements
 
-  let src = Nbparts.Util.Text.splitKeepNewlines srcText
+  let src = TextUtil.splitKeepNewlines srcText
 
-  pure $ Nbparts.CellSource cellId cellType src maybeAttachments
+  pure $ CellSource cellId cellType src maybeAttachments
 
 parseCodeOrRawCell :: Parser Text
 parseCodeOrRawCell = do
@@ -86,7 +94,7 @@ parseOtherCell = do
   -- newlines, so we have to remove them using plain text functions instead of Megaparsec.
   pure $ Maybe.fromMaybe body $ Text.stripSuffix "\n\n" body
 
-parseCellInfo :: Parser Nbparts.CellMarker
+parseCellInfo :: Parser CellMarker
 parseCellInfo = do
   Monad.void $ P.string "<!--"
   P.space
@@ -96,24 +104,24 @@ parseCellInfo = do
   let jsonUnescaped = unescapeCellMarkerContent json
   case Aeson.eitherDecodeStrict (Text.encodeUtf8 jsonUnescaped) of
     Right cellInfo -> pure cellInfo
-    Left err -> P.customFailure (Nbparts.ParseMarkdownSourcesJsonError $ Text.pack err)
+    Left err -> P.customFailure (ParseMarkdownSourcesJsonError $ Text.pack err)
 
 unescapeComments :: Text -> Text
 unescapeComments = Text.replace "\\\\" "\\" . Text.replace "\\nbparts:cell" "nbparts:cell"
 
-findAttachmentNameByFilePath :: Nbparts.UnembeddedMimeAttachments -> FilePath -> Maybe Text
-findAttachmentNameByFilePath (Nbparts.UnembeddedMimeAttachments attachments) targetFp =
+findAttachmentNameByFilePath :: UnembeddedMimeAttachments -> FilePath -> Maybe Text
+findAttachmentNameByFilePath (UnembeddedMimeAttachments attachments) targetFp =
   Map.foldrWithKey go Nothing attachments
   where
-    go :: Text -> Nbparts.UnembeddedMimeBundle -> Maybe Text -> Maybe Text
-    go attachmentName (Nbparts.UnembeddedMimeBundle bundle) acc =
+    go :: Text -> UnembeddedMimeBundle -> Maybe Text -> Maybe Text
+    go attachmentName (UnembeddedMimeBundle bundle) acc =
       acc
         <|> if any (matches targetFp) (Map.elems bundle)
           then Just attachmentName
           else Nothing
 
-    matches :: FilePath -> Nbparts.UnembeddedMimeData -> Bool
-    matches targetFp' (Nbparts.BinaryData fp) = fp == targetFp'
+    matches :: FilePath -> UnembeddedMimeData -> Bool
+    matches targetFp' (BinaryData fp) = fp == targetFp'
     matches _ _ = False
 
 unescapeCellMarkerContent :: Text -> Text
