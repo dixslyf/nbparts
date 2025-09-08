@@ -38,6 +38,11 @@ jobs:
         with:
           ghc-version: ${{ matrix.ghc }}
 
+      # `zlib` is needed by the `req` library.
+      - name: Install zlib on Windows
+        if: runner.os == 'Windows'
+        run: ghcup run --mingw-path -- pacman --noconfirm -S mingw-w64-x86_64-pkgconf mingw-w64-x86_64-zlib
+
       - name: Cache
         uses: actions/cache@v4
         with:
@@ -45,8 +50,18 @@ jobs:
           path: ${{ steps.setup-haskell.outputs.cabal-store }}
           restore-keys: ghc-${{ matrix.ghc }}-${{ runner.os }}-
 
-      - name: Build
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: ghcup run --mingw-path -- cabal build
+
+      - name: Build (Non-Windows)
+        if: runner.os != 'Windows'
         run: cabal build
 
-      - name: Test
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        run: ghcup run --mingw-path -- cabal test --test-options "+RTS -N -RTS"
+
+      - name: Test (Non-Windows)
+        if: runner.os != 'Windows'
         run: cabal test --test-options "+RTS -N -RTS"
