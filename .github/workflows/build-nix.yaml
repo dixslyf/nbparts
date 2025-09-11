@@ -1,0 +1,40 @@
+---
+name: Build (Nix)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-nix:
+    name: Build with Nix (${{ matrix.builds.name }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        builds:
+          - name: linux-x86_64
+            output: "nbparts:exe:nbparts"
+            test-output: "nbparts:test:test-nbparts"
+    steps:
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          extra_nix_config: |
+            extra-substituters = https://cache.iog.io
+            extra-trusted-public-keys = hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=
+
+      - uses: cachix/cachix-action@v16
+        with:
+          name: "dixslyf"
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Build (${{ matrix.builds.name }})
+        run: nix build .#${{ matrix.builds.output }}
+
+      - name: Test (${{ matrix.builds.name }})
+        run: nix run .#${{ matrix.builds.test-output }}
