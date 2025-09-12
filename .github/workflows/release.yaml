@@ -17,6 +17,8 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write  # Needed for creating a release.
     steps:
       - name: Install Nix
         uses: cachix/install-nix-action@v31
