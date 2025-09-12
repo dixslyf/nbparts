@@ -94,6 +94,13 @@
       // {
         packages = mkPkgsApps "packages";
         apps = mkPkgsApps "apps";
+        devShells = flake.devShells // {
+          ci = pkgs.mkShell {
+            packages = [
+              pkgs.upx
+            ];
+          };
+        };
       }
     );
 }
