@@ -49,7 +49,7 @@ jobs:
         run: upx result/bin/nbparts -o nbparts-x86_64-linux
 
       - name: Make release
-        if: ${{ !inputs.release }}
+        if: ${{ inputs.release }}
         uses: softprops/action-gh-release@v2
         with:
           draft: true
