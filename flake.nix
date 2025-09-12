@@ -76,19 +76,24 @@
             ps.x86_64-darwin
           ];
         };
-      in
-      flake
-      // {
-        packages =
+
+        mkPkgsApps =
+          out-name:
           let
-            nbparts = flake.packages."nbparts:exe:nbparts";
+            out = flake.${out-name};
+            nbparts = out."nbparts:exe:nbparts";
           in
-          flake.packages
+          out
           // {
             default = nbparts;
             inherit nbparts;
-            nbparts-static = flake.packages."x86_64-unknown-linux-musl:nbparts:exe:nbparts";
+            nbparts-static = out."x86_64-unknown-linux-musl:nbparts:exe:nbparts";
           };
+      in
+      flake
+      // {
+        packages = mkPkgsApps "packages";
+        apps = mkPkgsApps "apps";
       }
     );
 }
