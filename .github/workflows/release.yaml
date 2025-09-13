@@ -1,0 +1,59 @@
+---
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "If `true`, make a draft release."
+        type: boolean
+        required: false
+        default: true
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write  # Needed for creating a release.
+    steps:
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          extra_nix_config: |
+            substituters = https://cache.iog.io https://cache.zw3rk.com https://cache.nixos.org/
+            trusted-public-keys = hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= loony-tools:pr9m4BkM/5/eSTZlkQyRt57Jz7OMBxNSUiMC4FkcNfk= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+
+      - uses: cachix/cachix-action@v16
+        with:
+          name: "dixslyf"
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Load developer shell
+        uses: nicknovitski/nix-develop@v1
+        with:
+          arguments: ".#ci"
+
+      - name: Build (Linux static)
+        run: nix build .#nbparts-static
+
+      - name: Test (Linux static)
+        run: nix run .#x86_64-unknown-linux-musl:nbparts:test:test-nbparts
+
+      - name: Compress executable
+        run: upx result/bin/nbparts -o nbparts-x86_64-linux
+
+      - name: Make release
+        if: ${{ inputs.release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            nbparts-x86_64-linux

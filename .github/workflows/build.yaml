@@ -1,0 +1,67 @@
+---
+name: Build
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  generate-matrix:
+    name: Generate GHC and OS matrix
+    outputs:
+      matrix: ${{ steps.gen-matrix.outputs.matrix }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GHC and OS matrix
+        id: gen-matrix
+        uses: kleidukos/get-tested@v0.1.7.1
+        with:
+          cabal-file: nbparts.cabal
+          ubuntu-version: "24.04"
+          windows-version: "2025"
+          macos-version: "15"
+          version: 0.1.7.1
+  build:
+    name: Build with GHC ${{ matrix.ghc }} on ${{ matrix.os }}
+    needs: generate-matrix
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Haskell
+        id: setup-haskell
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: ${{ matrix.ghc }}
+
+      # `zlib` is needed by the `req` library.
+      - name: Install zlib on Windows
+        if: runner.os == 'Windows'
+        run: ghcup run --mingw-path -- pacman --noconfirm -S mingw-w64-x86_64-pkgconf mingw-w64-x86_64-zlib
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          key: ghc-${{ matrix.ghc }}-${{ runner.os }}-${{ hashFiles('**/plan.json') }}
+          path: ${{ steps.setup-haskell.outputs.cabal-store }}
+          restore-keys: ghc-${{ matrix.ghc }}-${{ runner.os }}-
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: ghcup run --mingw-path -- cabal build
+
+      - name: Build (Non-Windows)
+        if: runner.os != 'Windows'
+        run: cabal build
+
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        run: ghcup run --mingw-path -- cabal test --test-options "+RTS -N -RTS"
+
+      - name: Test (Non-Windows)
+        if: runner.os != 'Windows'
+        run: cabal test --test-options "+RTS -N -RTS"
