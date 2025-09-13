@@ -1,0 +1,170 @@
+# `nbparts`
+
+[![Build](https://github.com/dixslyf/nbparts/actions/workflows/build.yaml/badge.svg)](https://github.com/dixslyf/nbparts/actions/workflows/build.yaml)
+[![Build (Nix)](https://github.com/dixslyf/nbparts/actions/workflows/build-nix.yaml/badge.svg)](https://github.com/dixslyf/nbparts/actions/workflows/build-nix.yaml)
+
+`nbparts` is a tool for splitting Jupyter notebooks into its "parts":
+
+- sources (code and Markdown content),
+
+- outputs, and
+
+- metadata.
+
+These parts can be re-assembled back into an equivalent Jupyter notebook.
+The goal is to make it easier to store and diff Jupyter notebooks in text-based version control systems like Git.
+
+## Features
+
+- **Unpack**: Split a Jupyter notebook into its sources, outputs and metadata.
+
+- **Pack**: Reconstruct the original Jupyter notebook from unpacked parts.
+
+- **Formats**:
+    - Sources can be exported as _YAML_, _JSON_ or _Markdown_.
+
+    - Outputs and metadata can be exported as _YAML_ or _JSON_.
+
+- **Binary outputs and attachments** (e.g. PNG images, Markdown attachments) are extracted as files alongside the parts.
+
+- **Roundtrip safety**: `unpack` followed by `pack` yields a notebook semantically equivalent to the original.
+  Markdown and code formatting is preserved.
+
+    The only known caveat at this point in time is that,
+    when re-encoding binary attachments and outputs into base64,
+    `nbparts` always performs line wrapping after 76 characters;
+    however, not all Jupyter notebook platforms perform line wrapping
+    on the base64 strings, so although the content reconstructed by `nbparts`
+    is the same, the formatting may slightly differ.
+
+## Motivation
+
+Jupyter notebooks are widely used for data exploration and analysis,
+but because they are large JSON documents,
+storing them in version control systems like Git is painful:
+
+- Attachments, execution outputs and metadata add significant noise to diffs
+  and overshadow meaningful changes.
+
+- Even after removing metadata and binary outputs from a notebook,
+  the diffs for small edits to code or Markdown content are a little difficult to read
+  due to syntactic JSON elements.
+
+- Collaborating on notebooks is hard when every commit contains unrelated noise.
+
+Tools like Jupytext (awesome tool!) help by representing notebook sources as plaintext.
+`nbparts` complements this idea by splitting a notebook not only into its sources,
+but also into its outputs and metadata, as separate parts.
+This gives us more flexibility:
+
+- If you only care about the source code and Markdown,
+  you can ignore the outputs and metadata.
+
+- If outputs or metadata matter for reproducibility,
+  you can commit them alongside the sources.
+  Since attachments and binary outputs are extracted,
+  you may even use tools like Git LFS for versioning them.
+
+## Installation
+
+Static binaries for x86_64 Linux are available from the [releases](https://github.com/dixslyf/nbparts/releases).
+
+Unfortunately, no binary releases are available for macOS and Windows at this point in time (contributions welcome!).
+Please refer to [Compiling from Source](#compiling-from-source).
+
+## Basic Usage
+
+Unpack a notebook with all parts exported to YAML:
+
+```sh
+# This will create a `notebook.ipynb.nbparts` directory.
+nbparts unpack notebook.ipynb
+```
+
+Pack the parts back into a notebook:
+
+```
+nbparts pack notebook.ipynb.nbparts -o notebook-repacked.ipynb
+```
+
+Unpack a notebook, with sources exported to Markdown:
+
+```
+nbparts unpack notebook.ipynb --sources-format markdown
+```
+
+For more options, see:
+
+```
+nbparts --help
+```
+
+## Compiling From Source
+
+### Cabal
+
+`nbparts` uses Cabal for building and packaging.
+
+To build and install `nbparts`, ensure you have Cabal and GHC installed.
+
+Update Cabal's package database:
+
+```
+cabal update
+```
+
+Now, clone the repository and `cd` into it. Then, run:
+
+```
+cabal install
+```
+
+With the default Cabal configuration,
+this will build and install `nbparts` into `~/.cabal/bin` on Linux / macOS
+and `%APPDATA%\cabal\bin` on Windows.
+
+### Nix
+
+`nbparts` provides a Nix flake for building x86_64 Linux binaries.
+
+To build:
+
+```
+nix build github:dixslyf/nbparts#nbparts
+```
+
+To run:
+
+```
+nix run github:dixslyf/nbparts#nbparts
+```
+
+Static binaries can be built using Nix and are exposed as the `nbparts-static` flake output:
+
+```
+nix build github:dixslyf/nbparts#nbparts-static
+```
+
+```
+nix run github:dixslyf/nbparts#nbparts-static
+```
+
+## Running Tests
+
+`nbparts` uses Hspec and Hedgehog for testing.
+
+To run `nbparts`'s tests,
+clone the repository and `cd` into it.
+Then, run:
+
+```
+cabal test
+```
+
+### Nix
+
+Tests can also be run with Nix:
+
+```
+nix run github:dixslyf/nbparts#nbparts:test:test-nbparts
+```

@@ -1,18 +1,38 @@
 cabal-version: 3.8
 name: nbparts
 version: 0.1.0.0
--- synopsis:
--- description:
+synopsis: Unpack a Jupyter notebook into its sources, metadata and outputs
+description:
+    `nbparts` is a tool for splitting Jupyter notebooks into its "parts":
+    .
+    - sources (code and markdown content),
+    - outputs, and
+    - metadata.
+    .
+    These parts can be re-assembled back into an equivalent Jupyter notebook.
+    The goal is to make it easier to store and diff Jupyter notebooks in text-based version control systems like Git.
 license: Apache-2.0
-license-file: LICENSE
+license-files:
+    LICENSE
+    tests/fixtures/commonmark-spec/LICENSE
 author: Dixon Sean Low Yan Feng
 maintainer: root@dixslyf.dev
--- copyright:
+copyright: (c) 2025 Dixon Sean Low Yan Feng
+homepage: https://github.com/dixslyf/nbparts
+bug-reports: https://github.com/dixslyf/nbparts/issues
+category: Data
 tested-with:
     GHC == 9.8
 build-type: Simple
--- extra-doc-files:
--- extra-source-files:
+extra-doc-files:
+    CHANGELOG.md
+extra-source-files:
+    README.md
+    tests/fixtures/*.ipynb
+    tests/fixtures/commonmark-spec/*.ipynb
+source-repository head
+  type: git
+  location: https://github.com/dixslyf/nbparts
 
 common warnings
     ghc-options: -Wall -Wmissing-import-lists
