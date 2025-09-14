@@ -46,6 +46,14 @@ jobs:
         if: runner.os == 'Windows'
         run: ghcup run --mingw-path -- pacman --noconfirm -S mingw-w64-x86_64-pkgconf mingw-w64-x86_64-zlib
 
+      - name: Generate `plan.json` (Windows)  # Needed for generating the cache key.
+        if: runner.os == 'Windows'
+        run: ghcup run --mingw-path -- cabal build --dry-run
+
+      - name: Generate `plan.json` (Non-Windows)
+        if: runner.os != 'Windows'
+        run: cabal build --dry-run
+
       - name: Cache
         uses: actions/cache@v4
         with:
