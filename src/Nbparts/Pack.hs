@@ -59,9 +59,7 @@ data PackOptions = PackOptions
 
 pack :: (MonadError PackError m, MonadIO m) => PackOptions -> m ()
 pack opts = do
-  -- `nbpartsDir` should be in the form "some_notebook.ipynb.nbparts".
-  let fallbackOutputPath = FilePath.dropExtension opts.partsDirectory
-  let outputPath = Maybe.fromMaybe fallbackOutputPath opts.outputPath
+  let outputPath = Maybe.fromMaybe (mkDefOutputPath opts.partsDirectory) opts.outputPath
 
   -- Read manifest, metadata, sources and outputs.
   let mkImportPath :: FilePath -> Format -> FilePath
@@ -133,6 +131,15 @@ pack opts = do
       )
 
   liftIO $ exportJson outputPath filledNb
+
+mkDefOutputPath :: FilePath -> FilePath
+mkDefOutputPath partsDir = case FilePath.stripExtension "nbparts" partsDir of
+  Just stripped
+    | "ipynb" `FilePath.isExtensionOf` stripped -> stripped
+    | otherwise -> stripped <.> "ipynb"
+  Nothing -> case FilePath.stripExtension "ipynb" partsDir of
+    Just stripped -> stripped <> "-packed" <.> "ipynb"
+    Nothing -> partsDir <.> "ipynb"
 
 checkVersion :: (MonadError PackError m, MonadIO m) => Version -> m ()
 checkVersion nbpartsVersion = do

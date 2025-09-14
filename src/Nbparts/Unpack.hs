@@ -47,7 +47,7 @@ data UnpackOptions = UnpackOptions
 
 unpack :: (MonadError UnpackError m, MonadIO m) => UnpackOptions -> m ()
 unpack opts = do
-  let exportDirectory = Maybe.fromMaybe (opts.notebookPath <.> "nbparts") opts.outputPath
+  let exportDirectory = Maybe.fromMaybe (mkDefOutputPath opts.notebookPath) opts.outputPath
   let sourceMediaSubdir = "media"
   let outputMediaSubdir = "outputs-media"
   liftIO $ do
@@ -108,6 +108,9 @@ unpack opts = do
     FormatJson -> exportJson outputsPath outputs
     _ -> error $ "Illegal outputs format: " <> show opts.outputsFormat
   liftIO $ mapM_ (\(path, bytes) -> ByteString.writeFile (exportDirectory </> path) bytes) outputMedia
+
+mkDefOutputPath :: FilePath -> FilePath
+mkDefOutputPath nbPath = nbPath <.> "nbparts"
 
 hasOnlyOneNewline :: T.Text -> Bool
 hasOnlyOneNewline text = T.length (T.filter (== '\n') text) == 1
