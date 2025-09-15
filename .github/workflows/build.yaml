@@ -9,11 +9,24 @@ on:
   workflow_dispatch:
 
 jobs:
+  skip-check:
+    name: Check duplicate workflow run
+    continue-on-error: true  # In case `skip-duplicate-actions` fails to call GitHub's API
+    runs-on: ubuntu-24.04
+    outputs:
+      should-skip: ${{ steps.skip-check.outputs.should_skip }}
+    steps:
+      - id: skip-check
+        uses: fkirc/skip-duplicate-actions@v5
+        with:
+          paths_ignore: '["README.md", "CHANGELOG.md", "LICENSE"]'
   generate-matrix:
     name: Generate GHC and OS matrix
+    needs: skip-check
+    if: needs.skip-check.outputs.should-skip != 'true'
     outputs:
       matrix: ${{ steps.gen-matrix.outputs.matrix }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Generate GHC and OS matrix
         id: gen-matrix
