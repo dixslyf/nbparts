@@ -1,6 +1,7 @@
 module Nbparts.Cli.Options where
 
 import Control.Monad.Error.Class (throwError)
+import Data.Version qualified as Version
 import Nbparts.Pack (PackOptions (PackOptions))
 import Nbparts.Run (Command (Pack, Unpack), Options (Options))
 import Nbparts.Types (Format (FormatJson, FormatMarkdown, FormatYaml))
@@ -15,8 +16,10 @@ import Options.Applicative
     fullDesc,
     help,
     helper,
+    hidden,
     hsubparser,
     info,
+    infoOption,
     long,
     metavar,
     option,
@@ -29,6 +32,7 @@ import Options.Applicative
     strOption,
     value,
   )
+import Paths_nbparts qualified
 
 unpackOptionsParser :: Parser UnpackOptions
 unpackOptionsParser =
@@ -100,5 +104,9 @@ parseOpts :: IO Options
 parseOpts =
   customExecParser (prefs showHelpOnEmpty) $
     info
-      (helper <*> nbpartsOptionsParser)
+      (helper <*> versioner <*> nbpartsOptionsParser)
       (fullDesc <> progDesc "Unpack a Jupyter notebook into its sources, metadata and outputs")
+  where
+    versioner =
+      infoOption (Version.showVersion Paths_nbparts.version) $
+        short 'V' <> long "version" <> help "Show nbparts version" <> hidden

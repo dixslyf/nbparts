@@ -105,6 +105,9 @@ executable nbparts
     main-is: Main.hs
     other-modules:
         Nbparts.Cli.Options
+        Paths_nbparts
+    autogen-modules:
+        Paths_nbparts
     build-depends:
         nbparts,
         base >=4.19 && <5,
