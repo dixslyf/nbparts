@@ -170,6 +170,8 @@ checkVersion nbpartsVersion = do
       maybeMajorB = branch !? 1
       maybeMinor = branch !? 2
       maybePatch = branch !? 3
+      maybeInvalid = branch !? 4 -- We want this to be Nothing.
+  Monad.when (Maybe.isJust maybeInvalid) $ throwError (PackManifestUnknownVersionError version)
 
   (majorA, majorB, minor, patch) <- case (,,,) <$> maybeMajorA <*> maybeMajorB <*> maybeMinor <*> maybePatch of
     Just branches -> pure branches
