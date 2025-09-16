@@ -30,6 +30,7 @@ import Options.Applicative
     showHelpOnEmpty,
     str,
     strOption,
+    switch,
     value,
   )
 import Paths_nbparts qualified
@@ -67,6 +68,11 @@ unpackOptionsParser =
           short 'o'
             <> metavar "OUTPUT_PATH"
             <> help "Directory to write the unpacked notebook to"
+      )
+    <*> switch
+      ( short 'f'
+          <> long "force"
+          <> help "Overwrite existing files without confirmation"
       )
 
 packOptionsParser :: Parser PackOptions

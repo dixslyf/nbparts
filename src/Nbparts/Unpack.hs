@@ -46,7 +46,8 @@ data UnpackOptions = UnpackOptions
     sourcesFormat :: Format,
     metadataFormat :: Format,
     outputsFormat :: Format,
-    outputPath :: Maybe FilePath
+    outputPath :: Maybe FilePath,
+    force :: Bool
   }
 
 unpack :: (MonadError UnpackError m, MonadIO m) => UnpackOptions -> m ()
@@ -56,9 +57,12 @@ unpack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
   -- Check if we should overwrite the export directory (if it already exists and is non-empty).
   cont <-
     liftIO $
-      shouldConfirmOverwrite exportDirectory >>= \case
-        True -> confirm $ "Directory \"" <> Text.pack exportDirectory <> "\" exists and is not empty. Overwrite?"
-        False -> pure True
+      if opts.force
+        then pure True
+        else
+          shouldConfirmOverwrite exportDirectory >>= \case
+            True -> confirm $ "Directory \"" <> Text.pack exportDirectory <> "\" exists and is not empty. Overwrite?"
+            False -> pure True
 
   Monad.unless cont $ liftIO (Text.hPutStrLn stderr "Operation cancelled: directory not overwritten")
   Monad.guard cont
