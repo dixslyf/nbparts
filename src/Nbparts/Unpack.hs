@@ -124,6 +124,8 @@ unpack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
     _ -> error $ "Illegal outputs format: " <> show opts.outputsFormat
   liftIO $ mapM_ (\(path, bytes) -> ByteString.writeFile (exportDirectory </> path) bytes) outputMedia
 
+  liftIO $ Text.putStrLn ("Unpacked \"" <> Text.pack opts.notebookPath <> "\" to \"" <> Text.pack exportDirectory <> "\"")
+
 shouldConfirmOverwrite :: FilePath -> IO Bool
 shouldConfirmOverwrite exportDirectory = do
   exists <- Directory.doesDirectoryExist exportDirectory
