@@ -9,6 +9,7 @@ import Data.Text (Text)
 import Nbparts.Pack
   ( PackOptions
       ( PackOptions,
+        force,
         outputPath,
         partsDirectory
       ),
@@ -16,6 +17,7 @@ import Nbparts.Pack
 import Nbparts.Unpack
   ( UnpackOptions
       ( UnpackOptions,
+        force,
         metadataFormat,
         notebookPath,
         outputPath,
@@ -77,7 +79,8 @@ testIdentityWith' (UnpackFormats {sourcesFormat, metadataFormat, outputsFormat})
             sourcesFormat,
             metadataFormat,
             outputsFormat,
-            outputPath = Just unpackPath
+            outputPath = Just unpackPath,
+            force = False
           }
   unpackResult `shouldSatisfy` Either.isRight
 
@@ -86,7 +89,8 @@ testIdentityWith' (UnpackFormats {sourcesFormat, metadataFormat, outputsFormat})
       runPack $
         PackOptions
           { partsDirectory = unpackPath,
-            outputPath = Just repackPath
+            outputPath = Just repackPath,
+            force = False
           }
   packResult `shouldSatisfy` Either.isRight
 

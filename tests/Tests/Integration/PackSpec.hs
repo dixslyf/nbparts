@@ -3,11 +3,19 @@ module Tests.Integration.PackSpec where
 import Control.Monad.Except (runExceptT)
 import Data.Either qualified as Either
 import Data.Maybe qualified as Maybe
-import Nbparts.Pack (PackOptions (PackOptions, outputPath, partsDirectory))
+import Nbparts.Pack
+  ( PackOptions
+      ( PackOptions,
+        force,
+        outputPath,
+        partsDirectory
+      ),
+  )
 import Nbparts.Types (NbpartsError)
 import Nbparts.Unpack
   ( UnpackOptions
       ( UnpackOptions,
+        force,
         metadataFormat,
         notebookPath,
         outputPath,
@@ -66,7 +74,8 @@ testPackWith
               sourcesFormat,
               metadataFormat,
               outputsFormat,
-              outputPath = unpackOutputPath
+              outputPath = unpackOutputPath,
+              force = False
             }
     unpackResult `shouldSatisfy` Either.isRight
 
@@ -75,7 +84,8 @@ testPackWith
         runPack $
           PackOptions
             { partsDirectory = Maybe.fromMaybe (Unpack.mkDefOutputPath nbPath) unpackOutputPath,
-              outputPath = (</>) tmpdir <$> relPackOutputPath
+              outputPath = (</>) tmpdir <$> relPackOutputPath,
+              force = False
             }
     predicate packResult
 
