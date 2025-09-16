@@ -66,23 +66,10 @@ pack :: (MonadError PackError m, MonadIO m) => PackOptions -> m ()
 pack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
   let outputPath = Maybe.fromMaybe (mkDefOutputPath opts.partsDirectory) opts.outputPath
 
-  -- Check if we should overwrite the output path if it already exists.
-  cont <-
-    liftIO $
-      if opts.force
-        then pure True
-        else
-          Directory.doesFileExist outputPath >>= \case
-            True -> confirm $ "File \"" <> Text.pack outputPath <> "\" exists. Overwrite?"
-            False -> pure True
-
-  Monad.unless cont $ liftIO (Text.hPutStrLn stderr "Operation cancelled: file not overwritten")
-  Monad.guard cont
-
-  -- Read manifest, metadata, sources and outputs.
   let mkImportPath :: FilePath -> Format -> FilePath
       mkImportPath fname fmt = opts.partsDirectory </> fname <.> formatExtension fmt
 
+  -- Read manifest.
   let manifestPath = mkImportPath "nbparts" FormatYaml
   ( Manifest
       { nbpartsVersion,
@@ -100,6 +87,20 @@ pack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
 
   checkVersion nbpartsVersion
 
+  -- Check if we should overwrite the output path if it already exists.
+  cont <-
+    liftIO $
+      if opts.force
+        then pure True
+        else
+          Directory.doesFileExist outputPath >>= \case
+            True -> confirm $ "File \"" <> Text.pack outputPath <> "\" exists. Overwrite?"
+            False -> pure True
+
+  Monad.unless cont $ liftIO (Text.hPutStrLn stderr "Operation cancelled: file not overwritten")
+  Monad.guard cont
+
+  -- Read metadata, sources and outputs
   -- TODO: Don't fail if metadata and outputs are missing — just warn.
   let sourcesPath = mkImportPath "sources" sourcesFormat
   (sources :: [CellSource]) <- case sourcesFormat of
