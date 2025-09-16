@@ -4,6 +4,7 @@ import Control.Arrow (left)
 import Control.Monad qualified as Monad
 import Control.Monad.Error.Class (MonadError (throwError), liftEither)
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.Trans.Maybe (runMaybeT)
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty (confIndent)
 import Data.Aeson.Encode.Pretty qualified as AesonPretty
@@ -14,6 +15,7 @@ import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
 import Data.Text qualified as T
+import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import Data.Yaml qualified as Yaml
 import Nbparts.Types
@@ -30,8 +32,10 @@ import Nbparts.Unpack.Metadata (collectMetadata, extractNotebookVersion)
 import Nbparts.Unpack.Outputs (collectOutputs)
 import Nbparts.Unpack.Sources (collectSources)
 import Nbparts.Unpack.Sources.Markdown (sourcesToMarkdown)
+import Nbparts.Util.Prompt (confirm)
 import System.Directory qualified as Directory
 import System.FilePath ((<.>), (</>))
+import System.IO (stderr)
 import Text.Libyaml qualified as Libyaml
 
 minNotebookFormat :: (Int, Int)
@@ -46,8 +50,19 @@ data UnpackOptions = UnpackOptions
   }
 
 unpack :: (MonadError UnpackError m, MonadIO m) => UnpackOptions -> m ()
-unpack opts = do
+unpack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
   let exportDirectory = Maybe.fromMaybe (mkDefOutputPath opts.notebookPath) opts.outputPath
+
+  -- Check if we should overwrite the export directory (if it already exists and is non-empty).
+  cont <-
+    liftIO $
+      shouldConfirmOverwrite exportDirectory >>= \case
+        True -> confirm $ "Directory \"" <> Text.pack exportDirectory <> "\" exists and is not empty. Overwrite?"
+        False -> pure True
+
+  Monad.unless cont $ liftIO (Text.hPutStrLn stderr "Operation cancelled: directory not overwritten")
+  Monad.guard cont
+
   let sourceMediaSubdir = "media"
   let outputMediaSubdir = "outputs-media"
   liftIO $ do
@@ -108,6 +123,16 @@ unpack opts = do
     FormatJson -> exportJson outputsPath outputs
     _ -> error $ "Illegal outputs format: " <> show opts.outputsFormat
   liftIO $ mapM_ (\(path, bytes) -> ByteString.writeFile (exportDirectory </> path) bytes) outputMedia
+
+shouldConfirmOverwrite :: FilePath -> IO Bool
+shouldConfirmOverwrite exportDirectory = do
+  exists <- Directory.doesDirectoryExist exportDirectory
+  if exists
+    then
+      -- Check that the directory is not empty.
+      not . null <$> Directory.listDirectory exportDirectory
+    else
+      pure False
 
 mkDefOutputPath :: FilePath -> FilePath
 mkDefOutputPath nbPath = nbPath <.> "nbparts"
