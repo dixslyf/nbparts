@@ -191,15 +191,15 @@ checkVersion nbpartsVersion = do
       -- Newer minor or patch version should be backwards compatible.
       | otherwise = pure ()
 
-    warnManifestNewer :: String -> IO ()
+    warnManifestNewer :: Text -> IO ()
     warnManifestNewer compStr =
-      putStrLn $
+      Text.hPutStrLn stderr $
         "Warning: Manifest's "
           <> compStr
           <> " version ("
-          <> Version.showVersion nbpartsVersion
+          <> Text.pack (Version.showVersion nbpartsVersion)
           <> ") is newer than the current nbparts ("
-          <> Version.showVersion currentNbpartsVersion
+          <> Text.pack (Version.showVersion currentNbpartsVersion)
           <> "). nbparts will still try to continue, "
           <> "but may fail or produce an incorrect notebook!"
 
