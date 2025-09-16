@@ -148,6 +148,8 @@ pack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
 
   liftIO $ exportJson outputPath filledNb
 
+  liftIO $ Text.putStrLn ("Packed \"" <> Text.pack opts.partsDirectory <> "\" into \"" <> Text.pack outputPath <> "\"")
+
 mkDefOutputPath :: FilePath -> FilePath
 mkDefOutputPath partsDir = case FilePath.stripExtension "nbparts" partsDir of
   Just stripped
