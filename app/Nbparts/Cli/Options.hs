@@ -66,6 +66,7 @@ unpackOptionsParser =
     <*> optional
       ( strOption $
           short 'o'
+            <> long "output-path"
             <> metavar "OUTPUT_PATH"
             <> help "Directory to write the unpacked notebook to"
       )
@@ -79,7 +80,13 @@ packOptionsParser :: Parser PackOptions
 packOptionsParser =
   PackOptions
     <$> argument str (metavar "DIRECTORY" <> help "Path to the directory to pack into a notebook")
-    <*> optional (strOption $ short 'o' <> metavar "OUTPUT_PATH" <> help "Path to write the notebook to")
+    <*> optional
+      ( strOption $
+          short 'o'
+            <> long "output-path"
+            <> metavar "OUTPUT_PATH"
+            <> help "Path to write the notebook to"
+      )
     <*> switch
       ( short 'f'
           <> long "force"
