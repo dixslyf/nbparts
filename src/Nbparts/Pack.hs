@@ -60,7 +60,8 @@ import System.IO (stderr)
 
 data PackOptions = PackOptions
   { partsDirectory :: FilePath,
-    outputPath :: Maybe FilePath
+    outputPath :: Maybe FilePath,
+    force :: Bool
   }
 
 pack :: (MonadError PackError m, MonadIO m) => PackOptions -> m ()
@@ -70,9 +71,12 @@ pack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
   -- Check if we should overwrite the output path if it already exists.
   cont <-
     liftIO $
-      Directory.doesFileExist outputPath >>= \case
-        True -> confirm $ "File \"" <> Text.pack outputPath <> "\" exists. Overwrite?"
-        False -> pure True
+      if opts.force
+        then pure True
+        else
+          Directory.doesFileExist outputPath >>= \case
+            True -> confirm $ "File \"" <> Text.pack outputPath <> "\" exists. Overwrite?"
+            False -> pure True
 
   Monad.unless cont $ liftIO (Text.hPutStrLn stderr "Operation cancelled: file not overwritten")
   Monad.guard cont
