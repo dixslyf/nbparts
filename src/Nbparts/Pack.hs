@@ -33,8 +33,6 @@ import Nbparts.Types
     NotebookMetadata (NotebookMetadata),
     PackError
       ( PackIllegalFormatError,
-        PackManifestTooNewError,
-        PackManifestTooOldError,
         PackManifestUnknownVersionError,
         PackParseJsonMetadataError,
         PackParseJsonOutputsError,
@@ -164,8 +162,8 @@ mkDefOutputPath partsDir = case FilePath.stripExtension "nbparts" partsDir of
     Nothing -> partsDir <.> "ipynb"
 
 checkVersion :: (MonadError PackError m, MonadIO m) => Version -> m ()
-checkVersion nbpartsVersion = do
-  let Version branch _ = nbpartsVersion
+checkVersion version = do
+  let Version branch _ = version
       maybeMajorA = branch !? 0
       maybeMajorB = branch !? 1
       maybeMinor = branch !? 2
@@ -175,9 +173,9 @@ checkVersion nbpartsVersion = do
 
   (majorA, majorB, minor, patch) <- case (,,,) <$> maybeMajorA <*> maybeMajorB <*> maybeMinor <*> maybePatch of
     Just branches -> pure branches
-    Nothing -> throwError $ PackManifestUnknownVersionError nbpartsVersion
+    Nothing -> throwError $ PackManifestUnknownVersionError version
 
-  compareVersion majorA majorB minor patch
+  liftIO $ compareVersion majorA majorB minor patch
   where
     Version cBranch' _ = currentNbpartsVersion
     cBranch = NonEmptyList.fromList cBranch'
@@ -188,26 +186,41 @@ checkVersion nbpartsVersion = do
     cMinor = cBranch NonEmptyList.!! 2
     cPatch = cBranch NonEmptyList.!! 3
 
-    compareVersion :: (MonadError PackError m, MonadIO m) => Int -> Int -> Int -> Int -> m ()
+    compareVersion :: Int -> Int -> Int -> Int -> IO ()
     compareVersion majorA majorB minor patch
-      | (cMajorA, cMajorB) > (majorA, majorB) = throwError $ PackManifestTooOldError nbpartsVersion
-      | (cMajorA, cMajorB) < (majorA, majorB) = throwError $ PackManifestTooNewError nbpartsVersion
-      | cMinor < minor = liftIO $ warnManifestNewer "minor"
-      | cPatch < patch = liftIO $ warnManifestNewer "patch"
+      | (cMajorA, cMajorB) > (majorA, majorB) = warnManifestVersion version Major Older
+      | (cMajorA, cMajorB) < (majorA, majorB) = warnManifestVersion version Major Newer
+      | cMinor < minor = warnManifestVersion version Minor Newer
+      | cPatch < patch = warnManifestVersion version Patch Newer
       -- Newer minor or patch version should be backwards compatible.
       | otherwise = pure ()
 
-    warnManifestNewer :: Text -> IO ()
-    warnManifestNewer compStr =
-      Text.hPutStrLn stderr $
-        "Warning: Manifest's "
-          <> compStr
-          <> " version ("
-          <> Text.pack (Version.showVersion nbpartsVersion)
-          <> ") is newer than the current nbparts ("
-          <> Text.pack (Version.showVersion currentNbpartsVersion)
-          <> "). nbparts will still try to continue, "
-          <> "but may fail or produce an incorrect notebook!"
+data VersionComponent = Major | Minor | Patch
+
+data VersionRelative = Older | Newer
+
+warnManifestVersion :: Version -> VersionComponent -> VersionRelative -> IO ()
+warnManifestVersion ver comp rel =
+  Text.hPutStrLn stderr $
+    "Warning: Manifest's "
+      <> renderVersionComponent comp
+      <> " version ("
+      <> Text.pack (Version.showVersion ver)
+      <> ") is "
+      <> renderVersionRelative rel
+      <> " than the current nbparts ("
+      <> Text.pack (Version.showVersion currentNbpartsVersion)
+      <> "). nbparts will still try to continue, "
+      <> "but may fail or produce an incorrect notebook!"
+  where
+    renderVersionComponent :: VersionComponent -> Text
+    renderVersionComponent Major = "major"
+    renderVersionComponent Minor = "minor"
+    renderVersionComponent Patch = "patch"
+
+    renderVersionRelative :: VersionRelative -> Text
+    renderVersionRelative Older = "older"
+    renderVersionRelative Newer = "newer"
 
 prettyConfig :: AesonPretty.Config
 prettyConfig = AesonPretty.defConfig {confIndent = AesonPretty.Spaces 1}
