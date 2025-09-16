@@ -4,6 +4,7 @@ import Control.Arrow (left)
 import Control.Monad qualified as Monad
 import Control.Monad.Error.Class (MonadError (throwError), liftEither)
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.Trans.Maybe (runMaybeT)
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty (confIndent)
 import Data.Aeson.Encode.Pretty qualified as AesonPretty
@@ -13,7 +14,8 @@ import Data.ByteString.Lazy qualified as LazyByteString
 import Data.Ipynb qualified as Ipynb
 import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
-import Data.Text qualified as T
+import Data.Text (Text)
+import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import Data.Yaml qualified as Yaml
 import Nbparts.Types
@@ -30,8 +32,10 @@ import Nbparts.Unpack.Metadata (collectMetadata, extractNotebookVersion)
 import Nbparts.Unpack.Outputs (collectOutputs)
 import Nbparts.Unpack.Sources (collectSources)
 import Nbparts.Unpack.Sources.Markdown (sourcesToMarkdown)
+import Nbparts.Util.Prompt (confirm)
 import System.Directory qualified as Directory
 import System.FilePath ((<.>), (</>))
+import System.IO (stderr)
 import Text.Libyaml qualified as Libyaml
 
 minNotebookFormat :: (Int, Int)
@@ -42,12 +46,27 @@ data UnpackOptions = UnpackOptions
     sourcesFormat :: Format,
     metadataFormat :: Format,
     outputsFormat :: Format,
-    outputPath :: Maybe FilePath
+    outputPath :: Maybe FilePath,
+    force :: Bool
   }
 
 unpack :: (MonadError UnpackError m, MonadIO m) => UnpackOptions -> m ()
-unpack opts = do
+unpack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
   let exportDirectory = Maybe.fromMaybe (mkDefOutputPath opts.notebookPath) opts.outputPath
+
+  -- Check if we should overwrite the export directory (if it already exists and is non-empty).
+  cont <-
+    liftIO $
+      if opts.force
+        then pure True
+        else
+          shouldConfirmOverwrite exportDirectory >>= \case
+            True -> confirm $ "Directory \"" <> Text.pack exportDirectory <> "\" exists and is not empty. Overwrite?"
+            False -> pure True
+
+  Monad.unless cont $ liftIO (Text.hPutStrLn stderr "Operation cancelled: directory not overwritten")
+  Monad.guard cont
+
   let sourceMediaSubdir = "media"
   let outputMediaSubdir = "outputs-media"
   liftIO $ do
@@ -59,7 +78,7 @@ unpack opts = do
   notebookBytes <- liftIO $ LazyByteString.readFile opts.notebookPath
   (nb :: SomeNotebook) <-
     liftEither $
-      left (UnpackParseNotebookError . T.pack) $
+      left (UnpackParseNotebookError . Text.pack) $
         Aeson.eitherDecode notebookBytes
   let withNb = withSomeNotebook nb
 
@@ -109,29 +128,41 @@ unpack opts = do
     _ -> error $ "Illegal outputs format: " <> show opts.outputsFormat
   liftIO $ mapM_ (\(path, bytes) -> ByteString.writeFile (exportDirectory </> path) bytes) outputMedia
 
+  liftIO $ Text.putStrLn ("Unpacked \"" <> Text.pack opts.notebookPath <> "\" to \"" <> Text.pack exportDirectory <> "\"")
+
+shouldConfirmOverwrite :: FilePath -> IO Bool
+shouldConfirmOverwrite exportDirectory = do
+  exists <- Directory.doesDirectoryExist exportDirectory
+  if exists
+    then
+      -- Check that the directory is not empty.
+      not . null <$> Directory.listDirectory exportDirectory
+    else
+      pure False
+
 mkDefOutputPath :: FilePath -> FilePath
 mkDefOutputPath nbPath = nbPath <.> "nbparts"
 
-hasOnlyOneNewline :: T.Text -> Bool
-hasOnlyOneNewline text = T.length (T.filter (== '\n') text) == 1
+hasOnlyOneNewline :: Text -> Bool
+hasOnlyOneNewline text = Text.length (Text.filter (== '\n') text) == 1
 
-hasNewlineSuffix :: T.Text -> Bool
-hasNewlineSuffix = T.isSuffixOf "\n"
+hasNewlineSuffix :: Text -> Bool
+hasNewlineSuffix = Text.isSuffixOf "\n"
 
 -- Based on Yaml's default string style.
-nbpartsYamlStringStyle :: T.Text -> (Libyaml.Tag, Libyaml.Style)
+nbpartsYamlStringStyle :: Text -> (Libyaml.Tag, Libyaml.Style)
 nbpartsYamlStringStyle s
   | hasOnlyOneNewline s && hasNewlineSuffix s = (Libyaml.NoTag, Libyaml.DoubleQuoted)
-  | "\n" `T.isInfixOf` s = (Libyaml.NoTag, Libyaml.Literal)
+  | "\n" `Text.isInfixOf` s = (Libyaml.NoTag, Libyaml.Literal)
   | Yaml.isSpecialString s = (Libyaml.NoTag, Libyaml.SingleQuoted)
   | otherwise = (Libyaml.NoTag, Libyaml.PlainNoTag)
 
-extractLanguage :: NotebookMetadata -> Maybe T.Text
+extractLanguage :: NotebookMetadata -> Maybe Text
 extractLanguage (NotebookMetadata _ _ (Ipynb.JSONMeta nbMeta) _) = do
   kernelspec <- Map.lookup "kernelspec" nbMeta
   langFromKernelSpec kernelspec
 
-langFromKernelSpec :: Aeson.Value -> Maybe T.Text
+langFromKernelSpec :: Aeson.Value -> Maybe Text
 langFromKernelSpec (Aeson.Object obj) = case Aeson.KeyMap.lookup "language" obj of
   Just (Aeson.String lang) -> Just lang
   _ -> Nothing

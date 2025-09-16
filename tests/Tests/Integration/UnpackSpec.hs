@@ -12,6 +12,7 @@ import Nbparts.Types
 import Nbparts.Unpack
   ( UnpackOptions
       ( UnpackOptions,
+        force,
         metadataFormat,
         notebookPath,
         outputPath,
@@ -46,7 +47,8 @@ testUnpackWith (UnpackFormats {sourcesFormat, metadataFormat, outputsFormat}) fi
             sourcesFormat,
             metadataFormat,
             outputsFormat,
-            outputPath = Just unpackPath
+            outputPath = Just unpackPath,
+            force = False
           }
   predicate unpackResult
 
