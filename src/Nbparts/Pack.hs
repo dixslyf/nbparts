@@ -2,8 +2,10 @@ module Nbparts.Pack where
 
 import Control.Arrow (left)
 import Control.Monad ((>=>))
+import Control.Monad qualified as Monad
 import Control.Monad.Error.Class (MonadError (throwError), liftEither)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Trans.Maybe (runMaybeT)
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty (Config (confIndent))
 import Data.Aeson.Encode.Pretty qualified as AesonPretty
@@ -13,6 +15,7 @@ import Data.List ((!?))
 import Data.List.NonEmpty qualified as NonEmptyList
 import Data.Map qualified as Map
 import Data.Maybe qualified as Maybe
+import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import Data.Version (Version (Version))
@@ -49,8 +52,11 @@ import Nbparts.Types
     formatExtension,
     withSomeNotebook,
   )
+import Nbparts.Util.Prompt (confirm)
+import System.Directory qualified as Directory
 import System.FilePath ((<.>), (</>))
 import System.FilePath qualified as FilePath
+import System.IO (stderr)
 
 data PackOptions = PackOptions
   { partsDirectory :: FilePath,
@@ -58,8 +64,18 @@ data PackOptions = PackOptions
   }
 
 pack :: (MonadError PackError m, MonadIO m) => PackOptions -> m ()
-pack opts = do
+pack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
   let outputPath = Maybe.fromMaybe (mkDefOutputPath opts.partsDirectory) opts.outputPath
+
+  -- Check if we should overwrite the output path if it already exists.
+  cont <-
+    liftIO $
+      Directory.doesFileExist outputPath >>= \case
+        True -> confirm $ "File \"" <> Text.pack outputPath <> "\" exists. Overwrite?"
+        False -> pure True
+
+  Monad.unless cont $ liftIO (Text.hPutStrLn stderr "Operation cancelled: file not overwritten")
+  Monad.guard cont
 
   -- Read manifest, metadata, sources and outputs.
   let mkImportPath :: FilePath -> Format -> FilePath
