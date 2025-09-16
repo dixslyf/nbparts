@@ -8,7 +8,6 @@ import Data.Text qualified as Text
 import Data.Version qualified as Data
 import Data.Version qualified as Version
 import Data.Yaml qualified as Yaml
-import Nbparts.Types.Manifest (currentNbpartsVersion)
 import Nbparts.Types.Manifest qualified as Manifest
 import Text.Megaparsec qualified as Megaparsec
 import Text.Parsec (errorPos)
@@ -30,8 +29,6 @@ data PackError
   = PackUnsupportedNotebookFormat (Int, Int)
   | PackParseManifestError ParseYamlError
   | PackManifestUnknownVersionError Data.Version
-  | PackManifestTooNewError Data.Version
-  | PackManifestTooOldError Data.Version
   | PackIllegalFormatError IllegalFormatContext Manifest.Format
   | PackParseYamlSourcesError ParseYamlError
   | PackParseJsonSourcesError Text
@@ -98,18 +95,6 @@ renderError err = case err of
       <> Text.pack (show minor)
   PackError (PackParseManifestError (ParseYamlError ex)) -> "Failed to parse manifest: " <> Text.pack (Exception.displayException ex)
   PackError (PackManifestUnknownVersionError version) -> "Unknown manifest version: " <> Text.pack (Version.showVersion version)
-  PackError (PackManifestTooNewError version) ->
-    "Manifest version ("
-      <> Text.pack (Version.showVersion version)
-      <> ") is too new for the current nbparts ("
-      <> Text.pack (Version.showVersion currentNbpartsVersion)
-      <> ")"
-  PackError (PackManifestTooOldError version) ->
-    "Manifest version ("
-      <> Text.pack (Version.showVersion version)
-      <> ") is too old for the current nbparts ("
-      <> Text.pack (Version.showVersion currentNbpartsVersion)
-      <> ")"
   PackError (PackIllegalFormatError ctx fmt) -> "Illegal format for " <> renderIllegalFormatContext ctx <> ":" <> renderFormat fmt
   PackError (PackParseYamlSourcesError (ParseYamlError ex)) -> "Failed to parse sources: " <> Text.pack (Exception.displayException ex)
   PackError (PackParseJsonSourcesError parseErr) -> "Failed to parse sources: " <> parseErr
