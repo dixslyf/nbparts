@@ -3,7 +3,6 @@ module Tests.Types.MetadataSpec where
 import Control.Arrow (left)
 import Data.Aeson qualified as Aeson
 import Data.Ipynb qualified as Ipynb
-import Data.Registry.Hedgehog.AesonGenerators (genValue)
 import Data.Yaml qualified as Yaml
 import Hedgehog (Gen, forAll, tripping)
 import Hedgehog.Gen qualified as Gen
@@ -12,6 +11,7 @@ import Nbparts.Types.Metadata (CellMetadata (CodeCellMetadata, GenericCellMetada
 import Test.Hspec (Spec, describe, it)
 import Test.Hspec.Hedgehog (hedgehog)
 import Tests.Types.SourcesSpec (genCellId)
+import Tests.Util.Json (genValue)
 
 genJSONMeta :: Gen Ipynb.JSONMeta
 genJSONMeta = do
