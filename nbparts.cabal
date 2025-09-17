@@ -23,6 +23,8 @@ bug-reports: https://github.com/dixslyf/nbparts/issues
 category: Data
 tested-with:
     GHC == 9.8
+    GHC == 9.10
+    GHC == 9.12
 build-type: Simple
 extra-doc-files:
     CHANGELOG.md
