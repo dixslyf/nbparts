@@ -4,11 +4,11 @@ version: 0.1.0.0
 synopsis: Unpack a Jupyter notebook into its sources, metadata and outputs
 description:
     `nbparts` is a tool for splitting Jupyter notebooks into its "parts":
-    .
+
     - sources (code and markdown content),
     - outputs, and
     - metadata.
-    .
+
     These parts can be re-assembled back into an equivalent Jupyter notebook.
     The goal is to make it easier to store and diff Jupyter notebooks in text-based version control systems like Git.
 license: Apache-2.0
