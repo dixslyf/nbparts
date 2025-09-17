@@ -67,6 +67,28 @@ This gives us more flexibility:
 
 ## Installation
 
+### Cabal
+
+`nbparts` can be installed with Cabal.
+
+You may first want to update Cabal's package database:
+
+```
+cabal update
+```
+
+Then, run:
+
+```
+cabal install nbparts
+```
+
+With the default Cabal configuration,
+this will build and install `nbparts` into `~/.cabal/bin` on Linux / macOS
+and `%APPDATA%\cabal\bin` on Windows.
+
+### Pre-Built Binaries
+
 Static binaries for x86_64 Linux are available from the [releases](https://github.com/dixslyf/nbparts/releases).
 
 Unfortunately, no binary releases are available for macOS and Windows at this point in time (contributions welcome!).
