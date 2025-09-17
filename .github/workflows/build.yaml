@@ -21,6 +21,25 @@ jobs:
         uses: fkirc/skip-duplicate-actions@v5
         with:
           paths_ignore: '["README.md", "CHANGELOG.md", "LICENSE"]'
+  generate-sdist:
+    name: Generate and upload source distribution tarball
+    needs: skip-check
+    if: needs.skip-check.outputs.should-skip != 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Generate source distribution tarball
+        run: |
+          cabal sdist -o sdist
+          mv sdist/*.tar.gz source.tar.gz
+
+      - name: Upload source distribution tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist-tarball
+          path: source.tar.gz
   generate-matrix:
     name: Generate GHC and OS matrix
     needs: skip-check
@@ -40,14 +59,21 @@ jobs:
           version: 0.1.7.1
   build:
     name: Build with GHC ${{ matrix.ghc }} on ${{ matrix.os }}
-    needs: generate-matrix
+    needs:
+      - generate-sdist
+      - generate-matrix
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
+      - name: Download source distribution tarball
+        uses: actions/download-artifact@v5
+        with:
+          name: sdist-tarball
+
+      - name: Extract source distribution tarball
+        run: tar xvf source.tar.gz --strip-components=1
 
       - name: Set up Haskell
         id: setup-haskell

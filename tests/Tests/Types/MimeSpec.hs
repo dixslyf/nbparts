@@ -3,7 +3,6 @@ module Tests.Types.MimeSpec where
 import Control.Arrow (left)
 import Data.Aeson qualified as Aeson
 import Data.Map qualified as Map
-import Data.Registry.Hedgehog.AesonGenerators (genValue)
 import Data.Text.Encoding qualified as Text
 import Data.Yaml qualified as Yaml
 import Hedgehog (Gen, forAll, tripping)
@@ -18,6 +17,7 @@ import Network.Mime (MimeType)
 import Network.Mime qualified as Mime
 import Test.Hspec (Spec, describe, it)
 import Test.Hspec.Hedgehog (hedgehog)
+import Tests.Util.Json (genValue)
 
 genUnembeddedMimeData :: Gen UnembeddedMimeData
 genUnembeddedMimeData =

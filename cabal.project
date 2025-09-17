@@ -1,7 +1,5 @@
 packages: .
 tests: True
--- Dependency of `registry-hedgehog-aeson`; universum 1.5 doesn't seem to compile with GHC 9.8.4.
-constraints: universum >= 1.6
 
 split-sections: true
 executable-stripping: true
