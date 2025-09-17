@@ -20,6 +20,12 @@ jobs:
     permissions:
       contents: write  # Needed for creating a release.
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Generate source distribution tarball
+        run: cabal sdist -o nbparts-sdist
+
       - name: Install Nix
         uses: cachix/install-nix-action@v31
         with:
@@ -32,9 +38,6 @@ jobs:
         with:
           name: "dixslyf"
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-
-      - name: Check out repository
-        uses: actions/checkout@v5
 
       - name: Load developer shell
         uses: nicknovitski/nix-develop@v1
@@ -57,3 +60,4 @@ jobs:
           draft: true
           files: |
             nbparts-x86_64-linux
+            nbparts-sdist/*.tar.gz
