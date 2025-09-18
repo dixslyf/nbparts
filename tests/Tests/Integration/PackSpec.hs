@@ -2,7 +2,7 @@ module Tests.Integration.PackSpec where
 
 import Control.Monad.Except (runExceptT)
 import Data.Either qualified as Either
-import Data.Maybe qualified as Maybe
+import Data.Text qualified as Text
 import Nbparts.Pack
   ( PackOptions
       ( PackOptions,
@@ -11,7 +11,11 @@ import Nbparts.Pack
         partsDirectory
       ),
   )
-import Nbparts.Types (NbpartsError)
+import Nbparts.Types (Format
+                        ( FormatJson,
+                          FormatMarkdown,
+                          FormatYaml
+                        ), NbpartsError (UnpackError), renderError)
 import Nbparts.Unpack
   ( UnpackOptions
       ( UnpackOptions,
@@ -23,11 +27,11 @@ import Nbparts.Unpack
         sourcesFormat
       ),
   )
-import Nbparts.Unpack qualified as Unpack
+import Nbparts.Unpack.Outputs (collectOutputs)
 import System.Directory qualified as Directory
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
-import Test.Hspec (Expectation, Spec, SpecWith, around, context, describe, it, shouldBe, shouldSatisfy)
+import Test.Hspec (Spec, SpecWith, around, context, describe, it, shouldBe, shouldSatisfy)
 import Tests.Integration.Util
   ( UnpackFormats
       ( UnpackFormats,
@@ -36,6 +40,7 @@ import Tests.Integration.Util
         sourcesFormat
       ),
     fixtureDir,
+    readIpynb,
     runPack,
     runSpecWithUnpackFormatsCA,
     runUnpack,
@@ -46,63 +51,66 @@ data PackTestOptions = PackTestOptions
     packOutputPath :: Maybe FilePath
   }
 
-testPackWith ::
+runTestUnpackWith' ::
   UnpackFormats ->
-  PackTestOptions ->
+  Maybe FilePath ->
   FilePath ->
-  (Either NbpartsError () -> Expectation) ->
-  FilePath ->
-  Expectation
-testPackWith
+  IO (Either NbpartsError ())
+runTestUnpackWith'
   (UnpackFormats {sourcesFormat, metadataFormat, outputsFormat})
-  ( PackTestOptions
-      { unpackOutputPath = relUnpackOutputPath,
-        packOutputPath = relPackOutputPath
-      }
-    )
-  fixture
-  predicate
-  tmpdir = do
-    let nbPath = fixtureDir </> fixture
-        unpackOutputPath = (</>) tmpdir <$> relUnpackOutputPath
+  outputPath
+  nbPath =
+    runExceptT $
+      runUnpack $
+        UnpackOptions
+          { notebookPath = nbPath,
+            sourcesFormat,
+            metadataFormat,
+            outputsFormat,
+            outputPath = outputPath,
+            force = False
+          }
 
-    unpackResult <-
-      runExceptT $
-        runUnpack $
-          UnpackOptions
-            { notebookPath = nbPath,
-              sourcesFormat,
-              metadataFormat,
-              outputsFormat,
-              outputPath = unpackOutputPath,
-              force = False
-            }
-    unpackResult `shouldSatisfy` Either.isRight
+runTestUnpackWith ::
+  UnpackFormats ->
+  FilePath ->
+  Maybe FilePath ->
+  FilePath ->
+  IO (Either NbpartsError ())
+runTestUnpackWith unpackFmts fixture relOutputPath tmpdir =
+  runTestUnpackWith'
+    unpackFmts
+    (fmap (tmpdir </>) relOutputPath)
+    (fixtureDir </> fixture)
 
-    packResult <-
-      runExceptT $
-        runPack $
-          PackOptions
-            { partsDirectory = Maybe.fromMaybe (Unpack.mkDefOutputPath nbPath) unpackOutputPath,
-              outputPath = (</>) tmpdir <$> relPackOutputPath,
-              force = False
-            }
-    predicate packResult
+runTestPack ::
+  FilePath ->
+  Maybe FilePath ->
+  FilePath ->
+  IO (Either NbpartsError ())
+runTestPack
+  relPartsDir
+  relOutPath
+  tmpdir =
+    runExceptT $
+      runPack $
+        PackOptions
+          { partsDirectory = tmpdir </> relPartsDir,
+            outputPath = (</>) tmpdir <$> relOutPath,
+            force = False
+          }
 
 runTests :: UnpackFormats -> SpecWith FilePath
 runTests unpackFormats = do
-  let testPack = testPackWith unpackFormats
-      testDefaultOutputPath unpackOutputPath expectedPackOutputPath tmpdir = do
-        let packTestOpts =
-              PackTestOptions
-                { unpackOutputPath = Just unpackOutputPath,
-                  packOutputPath = Nothing
-                }
-        testPack
-          packTestOpts
-          "empty.ipynb" -- Doesn't really matter what notebook we use.
-          (`shouldSatisfy` Either.isRight)
-          tmpdir
+  let runTestUnpack = runTestUnpackWith unpackFormats
+      testDefaultOutputPath relPartsDir expectedPackOutputPath tmpdir = do
+        -- Doesn't really matter what notebook we use.
+        unpackRes <- runTestUnpack "empty.ipynb" (Just relPartsDir) tmpdir
+        unpackRes `shouldSatisfy` Either.isRight
+
+        packRes <- runTestPack relPartsDir Nothing tmpdir
+        packRes `shouldSatisfy` Either.isRight
+
         exists <- Directory.doesFileExist $ tmpdir </> expectedPackOutputPath
         exists `shouldBe` True
 
@@ -122,6 +130,35 @@ runTests unpackFormats = do
     it "should write a notebook to the path with `.ipynb` appended" $ do
       _ <- testDefaultOutputPath "test" "test.ipynb"
       testDefaultOutputPath "test.hello" "test.hello.ipynb"
+
+  context "when given a parts directory with no outputs file" $
+    it "should pack as though the notebook has no outputs" $ \tmpdir -> do
+      unpackRes <- runTestUnpack "stream-outputs.ipynb" (Just "unpacked") tmpdir
+      unpackRes `shouldSatisfy` Either.isRight
+
+      Directory.removeFile $
+        tmpdir
+          </> "unpacked"
+          </> "outputs."
+            <> case unpackFormats.outputsFormat of
+              FormatYaml -> "yaml"
+              FormatJson -> "json"
+              FormatMarkdown -> error "Invalid format \"markdown\" for outputs"
+
+      packRes <- runTestPack "unpacked" (Just "repacked.ipynb") tmpdir
+      packRes `shouldSatisfy` Either.isRight
+
+      eitherNb <- runExceptT $ readIpynb (tmpdir </> "repacked.ipynb")
+      let nb = case eitherNb of
+            Right n -> n
+            Left err -> error err
+
+      let collected = collectOutputs "outputs-media" nb
+          outputs = case collected of
+            Right (o, _media) -> o
+            Left err -> error (Text.unpack $ renderError (UnpackError err))
+
+      outputs `shouldBe` mempty
 
 spec :: Spec
 spec = around (withSystemTempDirectory "test-nbparts") $ do
