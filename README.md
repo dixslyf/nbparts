@@ -84,10 +84,6 @@ Then, run:
 cabal install nbparts
 ```
 
-With the default Cabal configuration,
-this will build and install `nbparts` into `~/.cabal/bin` on Linux / macOS
-and `%APPDATA%\cabal\bin` on Windows.
-
 ### Pre-Built Binaries
 
 Static binaries for x86_64 Linux are available from the [releases](https://github.com/dixslyf/nbparts/releases).
@@ -141,10 +137,6 @@ Now, clone the repository and `cd` into it. Then, run:
 ```
 cabal install
 ```
-
-With the default Cabal configuration,
-this will build and install `nbparts` into `~/.cabal/bin` on Linux / macOS
-and `%APPDATA%\cabal\bin` on Windows.
 
 ### Nix
 
