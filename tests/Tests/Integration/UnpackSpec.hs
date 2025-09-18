@@ -20,6 +20,7 @@ import Nbparts.Unpack
         sourcesFormat
       ),
   )
+import System.Directory qualified as Directory
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec (Spec, SpecWith, around, context, describe, it, shouldBe, shouldSatisfy)
@@ -77,6 +78,17 @@ runTests fmts = do
     it "should return an unsupported notebook error" $ \tmpdir -> do
       res <- runTestUnpack "v3.ipynb" tmpdir
       res `shouldBe` Left (UnpackError (UnpackUnsupportedNotebookFormat (3, 0)))
+
+  context "when given a notebook without attachments or media outputs" $
+    it "should not create `media` and `outputs-media` directories" $ \tmpdir -> do
+      res <- runTestUnpack "empty.ipynb" tmpdir
+      res `shouldBe` Right ()
+
+      mediaExists <- Directory.doesDirectoryExist (tmpdir </> "unpacked" </> "media")
+      mediaExists `shouldBe` False
+
+      outputsMediaExists <- Directory.doesDirectoryExist (tmpdir </> "unpacked" </> "outputs-media")
+      outputsMediaExists `shouldBe` False
 
 spec :: Spec
 spec = around (withSystemTempDirectory "test-nbparts") $ do
