@@ -100,8 +100,7 @@ pack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
   Monad.unless cont $ liftIO (Text.hPutStrLn stderr "Operation cancelled: file not overwritten")
   Monad.guard cont
 
-  -- Read metadata, sources and outputs
-  -- TODO: Don't fail if metadata and outputs are missing — just warn.
+  -- Read sources.
   let sourcesPath = mkImportPath "sources" sourcesFormat
   (sources :: [CellSource]) <- case sourcesFormat of
     FormatYaml -> do
@@ -114,6 +113,7 @@ pack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
       mdText <- liftIO $ Text.readFile sourcesPath
       liftEither $ markdownToSources sourcesPath mdText
 
+  -- Read metadata.
   let metadataPath = mkImportPath "metadata" metadataFormat
   (metadata :: NotebookMetadata) <- case metadataFormat of
     FormatYaml -> do
@@ -124,15 +124,22 @@ pack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
       liftEither $ left (PackParseJsonMetadataError . Text.pack) res
     _ -> throwError $ PackIllegalFormatError IllegalFormatMetadata metadataFormat
 
+  -- Read outputs.
   let outputsPath = mkImportPath "outputs" outputsFormat
-  (unembeddedOutputs :: UnembeddedNotebookOutputs) <- case outputsFormat of
-    FormatYaml -> do
-      res <- liftIO $ Yaml.decodeFileEither outputsPath
-      liftEither $ left (PackParseYamlOutputsError . ParseYamlError) res
-    FormatJson -> do
-      res <- liftIO $ Aeson.eitherDecodeFileStrict outputsPath
-      liftEither $ left (PackParseJsonOutputsError . Text.pack) res
-    _ -> throwError $ PackIllegalFormatError IllegalFormatOutputs outputsFormat
+  outputsPathExists <- liftIO $ Directory.doesFileExist outputsPath
+  (unembeddedOutputs :: UnembeddedNotebookOutputs) <-
+    if outputsPathExists
+      then case outputsFormat of
+        FormatYaml -> do
+          res <- liftIO $ Yaml.decodeFileEither outputsPath
+          liftEither $ left (PackParseYamlOutputsError . ParseYamlError) res
+        FormatJson -> do
+          res <- liftIO $ Aeson.eitherDecodeFileStrict outputsPath
+          liftEither $ left (PackParseJsonOutputsError . Text.pack) res
+        _ -> throwError $ PackIllegalFormatError IllegalFormatOutputs outputsFormat
+      else do
+        liftIO $ Text.hPutStrLn stderr "Warning: Could not find outputs file — assuming no outputs"
+        pure mempty
 
   let (NotebookMetadata major minor _ _) = metadata
   nb <- case major of
