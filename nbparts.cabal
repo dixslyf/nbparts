@@ -1,6 +1,6 @@
 cabal-version: 3.8
 name: nbparts
-version: 0.1.0.0
+version: 0.1.1.0
 synopsis: Unpack a Jupyter notebook into its sources, metadata and outputs
 description:
     `nbparts` is a tool for splitting Jupyter notebooks into its "parts":
