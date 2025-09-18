@@ -16,10 +16,10 @@ import GHC.Generics (Generic)
 import Nbparts.Types.Mime (UnembeddedMimeBundle)
 
 newtype NotebookOutputs a = NotebookOutputs (Map Text [Ipynb.Output a]) -- Map of Cell IDs to outputs.
-  deriving (Generic, Show, Eq)
+  deriving (Generic, Show, Eq, Semigroup, Monoid)
 
 newtype UnembeddedNotebookOutputs = UnembeddedNotebookOutputs (Map Text [UnembeddedCellOutput])
-  deriving (Generic, Show, Eq, Ord)
+  deriving (Generic, Show, Eq, Ord, Semigroup, Monoid)
 
 data UnembeddedCellOutput
   = Stream
