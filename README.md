@@ -2,6 +2,7 @@
 
 [![Build](https://github.com/dixslyf/nbparts/actions/workflows/build.yaml/badge.svg?branch=master&event=push)](https://github.com/dixslyf/nbparts/actions/workflows/build.yaml)
 [![Build (Nix)](https://github.com/dixslyf/nbparts/actions/workflows/build-nix.yaml/badge.svg?branch=master&event=push)](https://github.com/dixslyf/nbparts/actions/workflows/build-nix.yaml)
+![Hackage Version](https://img.shields.io/hackage/v/nbparts?label=Hackage)
 
 `nbparts` is a tool for splitting Jupyter notebooks into its "parts":
 
