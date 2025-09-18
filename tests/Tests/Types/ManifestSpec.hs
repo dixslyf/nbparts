@@ -2,6 +2,8 @@ module Tests.Types.ManifestSpec where
 
 import Control.Arrow (left)
 import Data.Aeson qualified as Aeson
+import Data.Either qualified as Either
+import Data.Text.Encoding qualified as Text
 import Data.Version (Version (Version))
 import Data.Yaml qualified as Yaml
 import Hedgehog (Gen, forAll, tripping, (===))
@@ -19,7 +21,7 @@ import Nbparts.Types.Manifest
     currentNbpartsVersion,
     defManifest,
   )
-import Test.Hspec (Spec, describe, it)
+import Test.Hspec (Spec, describe, it, shouldBe, shouldSatisfy)
 import Test.Hspec.Hedgehog (hedgehog)
 
 genVersion :: Gen Version
@@ -76,3 +78,16 @@ spec = do
     it "YAML roundtrip" $ hedgehog $ do
       fmt <- forAll genFormat
       tripping fmt Yaml.encode (left (const ()) . Yaml.decodeEither')
+
+    -- v0.1.0.0 mistakenly serialised `FormatJson` as "FormatJson" instead of "json",
+    -- so we're stuck dealing with that. Although the other formats were serialised correctly,
+    -- the "wrong" counterparts for them have been added for symmetry.
+    it "has backward compatibility with v0.1.0.0" $ do
+      Aeson.eitherDecodeStrict @Format (Text.encodeUtf8 "\"FormatYaml\"") `shouldBe` Right FormatYaml
+      left (const ()) (Yaml.decodeEither' @Format (Text.encodeUtf8 "\"FormatYaml\"")) `shouldBe` Right FormatYaml
+
+      Aeson.eitherDecodeStrict @Format (Text.encodeUtf8 "\"FormatJson\"") `shouldSatisfy` Either.isRight
+      left (const ()) (Yaml.decodeEither' @Format (Text.encodeUtf8 "\"FormatJson\"")) `shouldBe` Right FormatJson
+
+      Aeson.eitherDecodeStrict @Format (Text.encodeUtf8 "\"FormatMarkdown\"") `shouldSatisfy` Either.isRight
+      left (const ()) (Yaml.decodeEither' @Format (Text.encodeUtf8 "\"FormatMarkdown\"")) `shouldBe` Right FormatMarkdown
