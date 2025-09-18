@@ -67,13 +67,6 @@ unpack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
   Monad.unless cont $ liftIO (Text.hPutStrLn stderr "Operation cancelled: directory not overwritten")
   Monad.guard cont
 
-  let sourceMediaSubdir = "media"
-  let outputMediaSubdir = "outputs-media"
-  liftIO $ do
-    Directory.createDirectoryIfMissing True (exportDirectory </> sourceMediaSubdir)
-    Directory.createDirectoryIfMissing True exportDirectory
-    Directory.createDirectoryIfMissing True (exportDirectory </> outputMediaSubdir)
-
   -- Parse the notebook.
   notebookBytes <- liftIO $ LazyByteString.readFile opts.notebookPath
   (nb :: SomeNotebook) <-
@@ -94,17 +87,23 @@ unpack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
             Manifest.outputsFormat = opts.outputsFormat
           }
   metadata <- liftEither $ withNb collectMetadata
+
+  let sourceMediaSubdir = "media"
   (sources, sourceMedia) <- liftEither $ withNb (collectSources sourceMediaSubdir)
+
+  let outputMediaSubdir = "outputs-media"
   (outputs, outputMedia) <- liftEither $ withNb (collectOutputs outputMediaSubdir)
 
-  -- Export manifest, sources, metadata and outputs.
+  liftIO $ Directory.createDirectoryIfMissing True exportDirectory
   let yamlOptions = Yaml.setStringStyle nbpartsYamlStringStyle Yaml.defaultEncodeOptions
   let mkExportPath :: FilePath -> Format -> FilePath
       mkExportPath fname fmt = exportDirectory </> fname <.> formatExtension fmt
 
+  -- Export manifest.
   let manifestPath = mkExportPath "nbparts" FormatYaml
   liftIO $ Yaml.encodeFile manifestPath manifest
 
+  -- Export sources.
   let sourcesPath = mkExportPath "sources" opts.sourcesFormat
   case opts.sourcesFormat of
     FormatYaml -> liftIO $ Yaml.encodeFileWith yamlOptions sourcesPath sources
@@ -113,20 +112,30 @@ unpack opts = fmap (Maybe.fromMaybe ()) . runMaybeT $ do
       let lang = Maybe.fromMaybe "" $ extractLanguage metadata
       markdownText <- liftEither $ sourcesToMarkdown lang sources
       liftIO $ Text.writeFile sourcesPath markdownText
-  liftIO $ mapM_ (\(path, bytes) -> ByteString.writeFile (exportDirectory </> path) bytes) sourceMedia
 
+  -- Export source media.
+  liftIO $ Monad.unless (null sourceMedia) $ do
+    Directory.createDirectoryIfMissing True (exportDirectory </> sourceMediaSubdir)
+    mapM_ (\(path, bytes) -> ByteString.writeFile (exportDirectory </> path) bytes) sourceMedia
+
+  -- Export metadata.
   let metadataPath = mkExportPath "metadata" opts.metadataFormat
   liftIO $ case opts.metadataFormat of
     FormatYaml -> Yaml.encodeFileWith yamlOptions metadataPath metadata
     FormatJson -> exportJson metadataPath metadata
     _ -> error $ "Illegal metadata format: " <> show opts.metadataFormat
 
+  -- Export outputs.
   let outputsPath = mkExportPath "outputs" opts.outputsFormat
   liftIO $ case opts.outputsFormat of
     FormatYaml -> Yaml.encodeFileWith yamlOptions outputsPath outputs
     FormatJson -> exportJson outputsPath outputs
     _ -> error $ "Illegal outputs format: " <> show opts.outputsFormat
-  liftIO $ mapM_ (\(path, bytes) -> ByteString.writeFile (exportDirectory </> path) bytes) outputMedia
+
+  -- Export output media.
+  liftIO $ Monad.unless (null outputMedia) $ do
+    Directory.createDirectoryIfMissing True (exportDirectory </> outputMediaSubdir)
+    mapM_ (\(path, bytes) -> ByteString.writeFile (exportDirectory </> path) bytes) outputMedia
 
   liftIO $ Text.putStrLn ("Unpacked \"" <> Text.pack opts.notebookPath <> "\" to \"" <> Text.pack exportDirectory <> "\"")
 

@@ -20,9 +20,10 @@ import Nbparts.Unpack
         sourcesFormat
       ),
   )
+import System.Directory qualified as Directory
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
-import Test.Hspec (Expectation, Spec, SpecWith, around, context, describe, it, shouldBe, shouldSatisfy)
+import Test.Hspec (Spec, SpecWith, around, context, describe, it, shouldBe, shouldSatisfy)
 import Tests.Integration.Util
   ( UnpackFormats
       ( UnpackFormats,
@@ -35,53 +36,59 @@ import Tests.Integration.Util
     runUnpack,
   )
 
-testUnpackWith :: UnpackFormats -> FilePath -> (Either NbpartsError () -> Expectation) -> FilePath -> Expectation
-testUnpackWith (UnpackFormats {sourcesFormat, metadataFormat, outputsFormat}) fixture predicate tmpdir = do
+runTestUnpackWith :: UnpackFormats -> FilePath -> FilePath -> IO (Either NbpartsError ())
+runTestUnpackWith (UnpackFormats {sourcesFormat, metadataFormat, outputsFormat}) fixture tmpdir = do
   let nbPath = fixtureDir </> fixture
   let unpackPath = tmpdir </> "unpacked"
-  unpackResult <-
-    runExceptT $
-      runUnpack $
-        UnpackOptions
-          { notebookPath = nbPath,
-            sourcesFormat,
-            metadataFormat,
-            outputsFormat,
-            outputPath = Just unpackPath,
-            force = False
-          }
-  predicate unpackResult
+  runExceptT $
+    runUnpack $
+      UnpackOptions
+        { notebookPath = nbPath,
+          sourcesFormat,
+          metadataFormat,
+          outputsFormat,
+          outputPath = Just unpackPath,
+          force = False
+        }
 
 runTests :: UnpackFormats -> SpecWith FilePath
 runTests fmts = do
-  let testUnpack = testUnpackWith fmts
+  let runTestUnpack = runTestUnpackWith fmts
 
   context "when given a notebook with missing cell IDs" $
-    it "should return a missing cell ID error" $
-      testUnpack "missing-cell-ids.ipynb" $
-        shouldBe $
-          Left (UnpackError UnpackMissingCellIdError)
+    it "should return a missing cell ID error" $ \tmpdir -> do
+      res <- runTestUnpack "missing-cell-ids.ipynb" tmpdir
+      res `shouldBe` Left (UnpackError UnpackMissingCellIdError)
 
   context "when given a malformed notebook" $
-    it "should return a parse error" $
-      testUnpack "malformed.ipynb" $ \res ->
-        res `shouldSatisfy` \case
-          Left (UnpackError (UnpackParseNotebookError _)) -> True
-          _ -> False
+    it "should return a parse error" $ \tmpdir -> do
+      res <- runTestUnpack "malformed.ipynb" tmpdir
+      res `shouldSatisfy` \case
+        Left (UnpackError (UnpackParseNotebookError _)) -> True
+        _ -> False
 
   context "when given an empty file" $
-    it "should return a parse error" $
-      testUnpack "null.ipynb" $ \res ->
-        res `shouldSatisfy` \case
-          Left (UnpackError (UnpackParseNotebookError _)) -> True
-          _ -> False
+    it "should return a parse error" $ \tmpdir -> do
+      res <- runTestUnpack "null.ipynb" tmpdir
+      res `shouldSatisfy` \case
+        Left (UnpackError (UnpackParseNotebookError _)) -> True
+        _ -> False
 
   context "when given a v3 notebook" $
-    it "should return an unsupported notebook error" $
-      testUnpack "v3.ipynb" $ \res ->
-        res `shouldSatisfy` \case
-          Left (UnpackError (UnpackUnsupportedNotebookFormat (3, 0))) -> True
-          _ -> False
+    it "should return an unsupported notebook error" $ \tmpdir -> do
+      res <- runTestUnpack "v3.ipynb" tmpdir
+      res `shouldBe` Left (UnpackError (UnpackUnsupportedNotebookFormat (3, 0)))
+
+  context "when given a notebook without attachments or media outputs" $
+    it "should not create `media` and `outputs-media` directories" $ \tmpdir -> do
+      res <- runTestUnpack "empty.ipynb" tmpdir
+      res `shouldBe` Right ()
+
+      mediaExists <- Directory.doesDirectoryExist (tmpdir </> "unpacked" </> "media")
+      mediaExists `shouldBe` False
+
+      outputsMediaExists <- Directory.doesDirectoryExist (tmpdir </> "unpacked" </> "outputs-media")
+      outputsMediaExists `shouldBe` False
 
 spec :: Spec
 spec = around (withSystemTempDirectory "test-nbparts") $ do
